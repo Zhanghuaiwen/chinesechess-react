@@ -196,16 +196,31 @@ export function makeMove(board, from, to) {
   return { board: newBoard, captured };
 }
 
-export function boardToText(board) {
-  const labels = [];
+const PIECE_VALUES = {
+  king: 100000,
+  rook: 900,
+  cannon: 450,
+  knight: 400,
+  bishop: 200,
+  advisor: 200,
+  pawn: 100,
+};
+
+export function evaluateBoard(board) {
+  let score = 0;
   for (let r = 0; r < ROWS; r++) {
-    const row = [];
     for (let c = 0; c < COLS; c++) {
       const p = board[r][c];
-      if (!p) row.push("．");
-      else row.push(p.color === "red" ? `红${p.label}` : `黑${p.label}`);
+      if (!p) continue;
+      let value = PIECE_VALUES[p.type];
+      if (p.type === "pawn") {
+        if (p.color === "red" && r <= 4) value = 200;
+        if (p.color === "black" && r >= 5) value = 200;
+      }
+      score += p.color === "red" ? value : -value;
     }
-    labels.push(row.join(" "));
   }
-  return labels.join("\n");
+  return score;
 }
+
+

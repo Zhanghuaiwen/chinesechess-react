@@ -1,6 +1,6 @@
 .layout {
   display: flex;
-  gap: 20px;
+  justify-content: center;
   align-items: flex-start;
   max-width: 1200px;
 }
@@ -52,51 +52,16 @@
   background: #1a1a1a;
 }
 
-.ai-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  font-size: 18px;
-  transition: all 0.3s;
-}
-
-.ai-badge.connected {
-  background: #27ae60;
-  box-shadow: 0 0 8px #27ae60;
-}
-
-.ai-badge.error {
-  background: #c0392b;
-  box-shadow: 0 0 8px #c0392b;
-  animation: pulse 1s ease-in-out infinite;
-}
-
-.ai-badge.random {
-  background: #f39c12;
-  box-shadow: 0 0 8px #f39c12;
-}
-
-.ai-badge.unknown {
-  background: #7f8c8d;
-}
-
-.ai-badge.thinking {
-  animation: spin 0.8s linear infinite;
-  background: #8e44ad;
-  box-shadow: 0 0 12px #8e44ad;
+.thinking-text {
+  color: #8e44ad;
+  font-size: 14px;
+  font-weight: normal;
+  animation: pulse 0.8s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.6; }
+  0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .game-over {
@@ -167,7 +132,7 @@
 }
 
 .cell.mark::after {
-  content: "•";
+  content: "\2022";
   font-size: 42px;
   color: #27ae60;
   position: absolute;
@@ -207,6 +172,47 @@
   background: #6f4f37;
 }
 
+.difficulty-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.difficulty-label {
+  font-size: 15px;
+  font-weight: bold;
+  color: #3d2b1a;
+}
+
+.difficulty-group {
+  display: flex;
+  gap: 6px;
+}
+
+.difficulty-btn {
+  background: #eddecb;
+  border: 2px solid #b89b7a;
+  color: #3d2b1a;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 4px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: 0.1s;
+}
+
+.difficulty-btn:hover {
+  background: #f5e8d8;
+}
+
+.difficulty-btn.active {
+  background: #5a3e2b;
+  border-color: #5a3e2b;
+  color: #f5e8d8;
+}
+
 #log {
   margin-top: 12px;
   font-size: 20px;
@@ -218,143 +224,4 @@
   border: 2px solid #b89b7a;
   font-weight: 500;
   transition: 0.2s;
-}
-
-.console-panel {
-  background: #1a1a2e;
-  border-radius: 16px;
-  border: 2px solid #16213e;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  width: 420px;
-  height: 740px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-family: 'Consolas', 'Courier New', monospace;
-}
-
-.console-header {
-  background: #0f3460;
-  color: #e94560;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  border-bottom: 1px solid #16213e;
-  flex-shrink: 0;
-}
-
-.console-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  background: #1a1a2e;
-  scrollbar-width: thin;
-  scrollbar-color: #0f3460 #1a1a2e;
-}
-
-.console-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.console-body::-webkit-scrollbar-track {
-  background: #1a1a2e;
-}
-
-.console-body::-webkit-scrollbar-thumb {
-  background: #0f3460;
-  border-radius: 3px;
-}
-
-.console-line {
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 2px 0;
-  color: #a0a0b0;
-  display: flex;
-  gap: 6px;
-}
-
-.console-time {
-  color: #535370;
-  flex-shrink: 0;
-  width: 64px;
-}
-
-.console-label {
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.console-msg {
-  color: #c0c0d0;
-}
-
-.console-info .console-msg {
-  color: #8899aa;
-}
-
-.console-input .console-label {
-  color: #4fc3f7;
-}
-
-.console-input .console-msg {
-  color: #4fc3f7;
-}
-
-.console-output .console-label {
-  color: #81c784;
-}
-
-.console-output .console-msg {
-  color: #81c784;
-}
-
-.console-move .console-msg {
-  color: #ffb74d;
-  font-weight: bold;
-}
-
-.console-separator {
-  color: #333350;
-  font-size: 11px;
-  padding: 4px 0;
-}
-
-.console-details {
-  margin: 0;
-}
-
-.console-details summary {
-  cursor: pointer;
-  list-style: none;
-}
-
-.console-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.console-details summary::before {
-  content: "▶ ";
-  color: #535370;
-  font-size: 10px;
-}
-
-.console-details[open] summary::before {
-  content: "▼ ";
-}
-
-.console-pre {
-  background: #12121e;
-  color: #a0a0b0;
-  padding: 8px 10px;
-  margin: 4px 0 4px 16px;
-  border-radius: 6px;
-  border-left: 3px solid #0f3460;
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 400px;
-  overflow-y: auto;
 }

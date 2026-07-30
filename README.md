@@ -1,16 +1,163 @@
-# React + Vite
+# 中国象棋 (Chinese Chess)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+基于 Minimax + Alpha-Beta 剪枝算法的中国象棋人机对弈，纯前端 React 应用。
 
-Currently, two official plugins are available:
+## 技术栈
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| 层      | 技术                     |
+| ------- | ------------------------ |
+| 框架    | React 19                 |
+| 构建    | Vite 8                   |
+| 语言    | JavaScript (JSX)         |
+| 静态检查 | oxlint                  |
+| AI 引擎 | Minimax + Alpha-Beta 剪枝（自实现，无外部依赖） |
+| 样式    | 原生 CSS（无 UI 框架）    |
 
-## React Compiler
+零 AI 运行时依赖——不依赖 Ollama、LLM API 或任何第三方 AI 服务。所有决策逻辑在浏览器中本地运行。
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 项目结构
 
-## Expanding the Oxlint configuration
+```
+src/
+├── main.jsx                  # React DOM 入口
+├── App.jsx                   # 根组件，组装布局 & 调度 AI 触发
+├── App.css                   # 全局样式
+├── hooks/
+│   └── useGame.js            # 核心游戏状态机（棋盘、回合、AI 编排）
+├── components/
+│   ├── Board.jsx             # 10×9 棋盘网格
+│   ├── Cell.jsx              # 单格组件（棋子渲染、选中/标记高亮）
+│   └── GameInfo.jsx          # 状态栏（回合显示、难度选择、操作按钮）
+├── services/
+│   └── aiService.js          # AI 搜索引擎（Minimax + Alpha-Beta）
+└── utils/
+    └── gameLogic.js          # 游戏规则引擎（走法生成、合法性校验、局面评估）
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## AI 引擎设计
+
+### 算法：Minimax + Alpha-Beta 剪枝
+
+AI 使用标准的对抗搜索算法，红方为最大化方（Max），黑方为最小化方（Min）。
+
+```
+function minimax(board, depth, alpha, beta, isMaximizing):
+  1. 生成当前方所有合法走法
+  2. 若无合法走法，返回极值（±99999）
+  3. 若 depth == 0，返回 evaluateBoard(board)
+  4. 对每个走法：
+     a. 执行走法得到新棋盘
+     b. 若吃掉将/帅，立即返回 mate score（±100000 + depth，更快将杀得分更高）
+     c. 递归调用 minimax(newBoard, depth-1, alpha, beta, !isMaximizing)
+     d. 更新 alpha/beta 进行剪枝
+  5. 返回最佳走法及对应的评估分
+```
+
+### 走法排序（Move Ordering）
+
+为提高 Alpha-Beta 剪枝效率，搜索前按**吃子价值**对走法降序排列：
+
+```js
+function orderMoves(board, moves):
+  return moves.sort((a, b) => captureValue(b) - captureValue(a))
+```
+
+吃子优先级：将 > 车 > 炮 > 马 > 象 > 士 > 兵
+
+这保证了最有希望的走法（吃大子）最先被搜索，使剪枝更早发生，大幅减少搜索树规模。
+
+### 评估函数
+
+评估函数是纯物质型的（material-only），对棋盘上所有棋子加权求和：
+
+| 棋子       | 基础分值 | 过河后 |
+| ---------- | ------- | ------ |
+| 将/帅 (king) | 100000  | —      |
+| 车 (rook)    | 900     | —      |
+| 炮 (cannon)  | 450     | —      |
+| 马 (knight)  | 400     | —      |
+| 象/相 (bishop) | 200   | —      |
+| 士/仕 (advisor) | 200  | —      |
+| 兵/卒 (pawn)  | 100     | 200    |
+
+```js
+score = Σ(红方棋子价值) - Σ(黑方棋子价值)
+```
+
+正值表示红方有利，负值表示黑方有利。兵/卒过河后分值翻倍以反映其威胁性提升。
+
+### 将杀检测与距离偏好
+
+当某走法吃掉对方将/帅时，搜索立即截断并返回一个 mate score：
+
+- 红方将杀：`score = 100000 + remaining_depth`（越快将杀分数越高）
+- 黑方将杀：`score = -100000 - remaining_depth`（越快将杀分数越低）
+
+这使得 AI 在多个将杀走法中选择最快的路线。
+
+## 难度系统
+
+| 难度 | 搜索深度 | 策略说明                                 |
+| ---- | ------- | ---------------------------------------- |
+| 简单 | 2       | 仅考虑 2 步以内的走法，较弱但响应极快       |
+| 中等 | 3       | 默认设置，平衡强度与速度                    |
+| 困难 | 4       | 使用迭代加深（ID），最多 8 秒时间预算       |
+
+**困难模式的迭代加深** (Iterative Deepening)：
+
+```
+function iterativeDeepening(board, maxDepth, timeBudget):
+  start = performance.now()
+  for depth = 1 to maxDepth:
+    if elapsed >= timeBudget: break
+    result = minimax(board, depth, -Infinity, Infinity, false)
+    bestMove = result.move
+  return bestMove
+```
+
+从 depth=1 开始逐层加深，每层完成后检查时间预算。若超时，返回上一层已完整搜索的最佳走法，保证在最坏情况下也有合理走法返回。
+
+## 游戏规则实现
+
+所有规则在 `src/utils/gameLogic.js` 中实现：
+
+- **车 (Rook)**：直线滑动，遇子停止
+- **马 (Knight)**：日字走法，蹩马腿检测
+- **象/相 (Bishop)**：田字走法，塞象眼检测，不可过河
+- **士/仕 (Advisor)**：九宫内斜走一步
+- **将/帅 (King)**：九宫内直走一步，支持飞将（将帅对面）
+- **炮 (Cannon)**：直线滑动，吃子需隔一子（炮架）
+- **兵/卒 (Pawn)**：过河前只能前进，过河后可左右
+
+走法生成后不做将军检测过滤——搜索算法在递归中通过吃将/帅自动处理将军与将杀。
+
+## 快速开始
+
+```bash
+# 安装依赖
+npm install
+
+# 开发模式
+npm run dev
+
+# 生产构建
+npm run build
+
+# 预览构建结果
+npm run preview
+
+# 静态检查
+npm run lint
+```
+
+## 构建产物
+
+```bash
+npm run build
+```
+
+产物输出到 `dist/` 目录，包含：
+
+- `index.html` — 入口 HTML
+- `assets/index-*.css` — 压缩后的样式
+- `assets/index-*.js` — 压缩后的 JS bundle（含 React 运行时，约 199KB / 63KB gzipped）

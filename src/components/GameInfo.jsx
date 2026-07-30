@@ -1,41 +1,47 @@
-export default function GameInfo({ current, gameOver, aiEnabled, aiThinking, aiStatus, log, onReset, onToggleAI }) {
-  const turnLabel = current === 'red' ? '红' : '黑';
+import { DIFFICULTY } from '../services/aiService';
 
-  const statusIcon = () => {
-    if (!aiEnabled) return null;
-    if (aiThinking) return '🤔';
-    if (aiStatus === 'connected') return '🟢';
-    if (aiStatus === 'error') return '🔴';
-    if (aiStatus === 'random') return '🟡';
-    return '⚪';
-  };
+export default function GameInfo({ current, gameOver, aiEnabled, aiThinking, difficulty, log, onReset, onToggleAI, onChangeDifficulty }) {
+  const turnLabel = current === 'red' ? '红' : '黑';
 
   return (
     <>
       <div className="header">
-        <span>🐴 中国象棋</span>
+        <span>中国象棋</span>
         <span className="header-right">
           <span className={`turn-label ${current}`}>{turnLabel}</span>
-          {aiEnabled && !gameOver && (
-            <span className={`ai-badge ${aiThinking ? 'thinking' : ''} ${aiStatus}`}>
-              {statusIcon()}
-            </span>
-          )}
+          {aiThinking && <span className="thinking-text">思考中...</span>}
         </span>
       </div>
 
       {gameOver && (
         <div className="game-over">
-          🏆 {gameOver}胜利！
+          {gameOver}胜利！
         </div>
       )}
 
       <div className="controls">
-        <button onClick={onReset}>🔄 重新开局</button>
+        <button onClick={onReset}>重新开局</button>
         <button onClick={onToggleAI}>
-          {aiEnabled ? '🤖 关闭AI' : '🧑 开启AI'}
+          {aiEnabled ? '关闭AI' : '开启AI'}
         </button>
       </div>
+
+      {aiEnabled && (
+        <div className="difficulty-row">
+          <span className="difficulty-label">AI难度</span>
+          <div className="difficulty-group">
+            {Object.entries(DIFFICULTY).map(([key, cfg]) => (
+              <button
+                key={key}
+                className={`difficulty-btn ${difficulty === key ? 'active' : ''}`}
+                onClick={() => onChangeDifficulty(key)}
+              >
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div id="log">{log}</div>
     </>

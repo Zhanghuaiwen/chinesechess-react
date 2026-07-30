@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { initBoard, getLegalMoves, makeMove, cloneBoard } from '../utils/gameLogic';
+import { initBoard, getLegalMoves, makeMove } from '../utils/gameLogic';
 import { getAIMove } from '../services/aiService';
 
 export default function useGame() {
@@ -10,19 +10,9 @@ export default function useGame() {
   const [gameOver, setGameOver] = useState(null);
   const [aiEnabled, setAiEnabled] = useState(true);
   const [aiThinking, setAiThinking] = useState(false);
-  const [aiStatus, setAiStatus] = useState('unknown');
+  const [difficulty, setDifficulty] = useState('medium');
   const [log, setLog] = useState('红方先行，点击棋子开始');
-  const [consoleEntries, setConsoleEntries] = useState([]);
   const aiRef = useRef(false);
-
-  const ts = () => {
-    const d = new Date();
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
-  };
-
-  const addConsole = (entry) => {
-    setConsoleEntries(prev => [...prev, { ...entry, time: ts() }]);
-  };
 
   const doMove = useCallback((from, to) => {
     const { board: newBoard, captured } = makeMove(board, from, to);
@@ -35,7 +25,6 @@ export default function useGame() {
       setMarks([]);
       setGameOver(current === 'red' ? '红方' : '黑方');
       setLog(`${current === 'red' ? '红方' : '黑方'}胜利！`);
-      addConsole({ type: 'move', content: `🏆 ${current === 'red' ? '红方' : '黑方'}吃掉将/帅，游戏结束！` });
       return { board: newBoard, next, gameOver: true };
     }
 
@@ -43,11 +32,7 @@ export default function useGame() {
     setCurrent(next);
     setSelected(null);
     setMarks([]);
-    setLog(`${next === 'red' ? '红方' : '黑方'}走棋`);
-    const fromLabel = board[from.r][from.c]?.label || '?';
-    const toLabel = newBoard[to.r][to.c]?.label || '?';
-    const colorLabel = current === 'red' ? '红' : '黑';
-    addConsole({ type: 'move', content: `[${colorLabel}] ${fromLabel}: (${from.r},${from.c}) → (${to.r},${to.c})` });
+    setLog(`${next === 'red' ? '请红方走棋' : 'AI思考中...'}`);
     return { board: newBoard, next, gameOver: false };
   }, [board, current]);
 
@@ -75,7 +60,7 @@ export default function useGame() {
           setSelected({ r, c });
           setMarks(getLegalMoves(board, r, c));
         } else {
-          setLog('⛔ 非法走子，请重新选择');
+          setLog('非法走子，请重新选择');
         }
       }
     } else {
@@ -83,7 +68,7 @@ export default function useGame() {
         setSelected({ r, c });
         setMarks(getLegalMoves(board, r, c));
       } else {
-        setLog('👆 请选择己方棋子');
+        setLog('请选择己方棋子');
       }
     }
   }, [board, current, selected, aiThinking, gameOver, aiEnabled, doMove]);
@@ -95,10 +80,8 @@ export default function useGame() {
     setMarks([]);
     setGameOver(null);
     setAiThinking(false);
-    setAiStatus('unknown');
-    setConsoleEntries([]);
     aiRef.current = false;
-    setLog('🔄 棋盘已重置，红方先行');
+    setLog('棋盘已重置，红方先行');
   }, []);
 
   const toggleAI = useCallback(() => {
@@ -106,59 +89,38 @@ export default function useGame() {
     setLog(aiEnabled ? 'AI对手已关闭' : 'AI对手已开启');
   }, [aiEnabled]);
 
-  const triggerAIMove = useCallback(async () => {
+  const changeDifficulty = useCallback((d) => {
+    setDifficulty(d);
+    setLog(`难度已切换至: ${d === 'easy' ? '简单' : d === 'medium' ? '中等' : '困难'}`);
+  }, []);
+
+  const triggerAIMove = useCallback(() => {
     if (aiRef.current) return;
     aiRef.current = true;
     setAiThinking(true);
-    setLog('🤔 AI思考中...');
-    addConsole({ type: 'separator' });
-    addConsole({ type: 'info', content: '🤔 AI思考中...' });
+    setLog('AI思考中...');
 
-    try {
-      const result = await getAIMove(board);
-      if (!result || !result.move) {
-        setLog('AI无合法走法');
-        setAiThinking(false);
-        aiRef.current = false;
-        return;
-      }
-
-      const { move, source, error, prompt, response } = result;
-
-      if (prompt) {
-        addConsole({ type: 'input', content: prompt, _open: false });
-      }
-      if (response) {
-        addConsole({ type: 'output', content: response, _open: true });
-      }
-
-      if (source === 'ollama') {
-        setAiStatus('connected');
-        setLog(`🤖 AI(Ollama) 走棋: (${move.from.r},${move.from.c}) → (${move.to.r},${move.to.c})`);
-      } else if (error) {
-        setAiStatus('error');
-        addConsole({ type: 'info', content: `⚠️ ${error}，使用随机走棋` });
-        setLog(`⚠️ ${error}，使用随机走棋: (${move.from.r},${move.from.c}) → (${move.to.r},${move.to.c})`);
-      } else {
-        setAiStatus('random');
-        setLog(`🎲 随机走棋: (${move.from.r},${move.from.c}) → (${move.to.r},${move.to.c})`);
-      }
-
-      setTimeout(() => {
+    setTimeout(() => {
+      try {
+        const move = getAIMove(board, difficulty);
+        if (!move) {
+          setLog('AI无合法走法');
+          setAiThinking(false);
+          aiRef.current = false;
+          return;
+        }
         doMove(move.from, move.to);
-        setAiThinking(false);
-        aiRef.current = false;
-      }, 300);
-    } catch {
+      } catch {
+        setLog('AI走棋异常');
+      }
       setAiThinking(false);
       aiRef.current = false;
-      setLog('❌ AI走棋异常');
-    }
-  }, [board, doMove]);
+    }, 50);
+  }, [board, doMove, difficulty]);
 
   return {
     board, current, selected, marks,
-    gameOver, aiEnabled, aiThinking, aiStatus, log, consoleEntries,
-    onCellClick, reset, toggleAI, triggerAIMove,
+    gameOver, aiEnabled, aiThinking, difficulty, log,
+    onCellClick, reset, toggleAI, changeDifficulty, triggerAIMove,
   };
 }
