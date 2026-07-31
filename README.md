@@ -27,7 +27,8 @@ src/
 ├── components/
 │   ├── Board.jsx             # 10×9 棋盘网格
 │   ├── Cell.jsx              # 单格组件（棋子渲染、选中/标记高亮）
-│   └── GameInfo.jsx          # 状态栏（回合显示、难度选择、操作按钮）
+│   ├── GameInfo.jsx          # 状态栏（回合显示、难度选择、操作按钮）
+│   └── StatsPanel.jsx        # 对局数据面板（节点数、剪枝数、局面评估）
 ├── services/
 │   └── aiService.js          # AI 搜索引擎（Minimax + Alpha-Beta）
 └── utils/
@@ -117,6 +118,40 @@ function iterativeDeepening(board, maxDepth, timeBudget):
 
 从 depth=1 开始逐层加深，每层完成后检查时间预算。若超时，返回上一层已完整搜索的最佳走法，保证在最坏情况下也有合理走法返回。
 
+## 搜索统计与对局数据
+
+`aiService.js` 在搜索过程中维护一个 `stats` 对象，实时累计两类核心指标：
+
+| 指标             | 含义                                     | 统计位置               |
+| ---------------- | ---------------------------------------- | ---------------------- |
+| `nodes`          | 访问过的博弈树节点总数                   | 每次 `minimax()` 入口 +1 |
+| `prunes`         | Alpha-Beta 剪枝命中次数                  | `beta <= alpha` 时 +1   |
+| `depthReached`   | 实际完成的搜索深度（迭代加深逐层更新）     | 每层搜索开始时记录      |
+
+每次 `getAIMove()` 返回 `{ move, nodes, prunes, depth, timeMs }`，其中 `timeMs` 为该次搜索的实际耗时。`useGame` 将其累计为全局 `aiStats`（`nodes`/`prunes` 累加，`lastNodes`/`lastPrunes`/`lastDepth`/`lastTimeMs` 记录最近一次搜索）并传给 `StatsPanel` 展示。
+
+`StatsPanel` 分"本次搜索 / 累计"两组实时显示：
+
+**本次搜索**（最近一次 AI 搜索）：
+- **当前思考节点数**：`lastNodes`，最近一次搜索访问的节点数
+- **当前剪枝数**：`lastPrunes`，最近一次搜索的剪枝命中次数
+- **搜索深度** / **搜索耗时**：`lastDepth` / `lastTimeMs`
+
+**累计**（整局）：
+- **总思考节点数**：`nodes`，所有搜索的节点数之和
+- **Alpha-Beta剪枝总数**：`prunes`，累计剪枝命中次数
+- **AI走棋次数**：`moves`，AI 已落子数
+- **棋盘价值**：`evaluateBoard(board)`，正值红方占优 / 负值黑方占优（每次渲染实时计算）
+
+## 悔棋功能
+
+`useGame` 维护一个 `history` 栈，每次 `doMove` 落子前将**当前快照** `{ board, current, gameOver }` 压栈。悔棋逻辑按对局模式决定回退层数：
+
+- **AI 模式**：回退 2 层（撤销 AI 应手 + 玩家本手），若当前为黑方回合则回退 1 层
+- **双人对弈模式**（关闭 AI）：回退 1 层
+
+悔棋恢复时同步清除选中态/标记，并重置 AI 防重入锁（`aiRef`）与思考状态，避免残留的定时器触发异常走子。
+
 ## 游戏规则实现
 
 所有规则在 `src/utils/gameLogic.js` 中实现：
@@ -160,4 +195,4 @@ npm run build
 
 - `index.html` — 入口 HTML
 - `assets/index-*.css` — 压缩后的样式
-- `assets/index-*.js` — 压缩后的 JS bundle（含 React 运行时，约 199KB / 63KB gzipped）
+- `assets/index-*.js` — 压缩后的 JS bundle（含 React 运行时，约 200KB / 64KB gzipped）

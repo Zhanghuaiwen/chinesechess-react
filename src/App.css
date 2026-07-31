@@ -60,8 +60,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .game-over {
@@ -97,7 +102,9 @@
   font-size: 36px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    transform 0.1s;
   box-shadow: inset 0 0 0 1px #c8b294;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
   position: relative;
@@ -126,7 +133,9 @@
 
 .cell.selected {
   background: #f7d98c !important;
-  box-shadow: 0 0 0 3px #f1c40f, 0 0 12px #f39c12;
+  box-shadow:
+    0 0 0 3px #f1c40f,
+    0 0 12px #f39c12;
   transform: scale(1.05);
   z-index: 2;
 }
@@ -158,7 +167,9 @@
   padding: 8px 28px;
   border-radius: 40px;
   cursor: pointer;
-  box-shadow: 0 4px 0 #3d2b1a, 0 6px 12px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 4px 0 #3d2b1a,
+    0 6px 12px rgba(0, 0, 0, 0.2);
   transition: 0.07s linear;
   letter-spacing: 1px;
 }
@@ -170,6 +181,12 @@
 
 .controls button:hover {
   background: #6f4f37;
+}
+
+.controls button:disabled {
+  background: #9a8a72;
+  box-shadow: 0 4px 0 #6f5f47;
+  cursor: not-allowed;
 }
 
 .difficulty-row {
@@ -211,6 +228,58 @@
   background: #5a3e2b;
   border-color: #5a3e2b;
   color: #f5e8d8;
+}
+
+.stats-panel {
+  background: #eddecb;
+  border: 3px solid #b89b7a;
+  border-radius: 16px;
+  padding: 14px 18px;
+  width: 210px;
+  font-size: 14px;
+  color: #3d2b1a;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+}
+
+.stats-header {
+  font-weight: bold;
+  font-size: 16px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid #b89b7a;
+}
+
+.stats-sub {
+  font-weight: bold;
+  font-size: 12px;
+  color: #8a6d4f;
+  margin: 8px 0 4px;
+  letter-spacing: 1px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px dashed #c8b294;
+}
+
+.stat-label {
+  color: #6f4f37;
+}
+
+.stat-value {
+  font-weight: bold;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+.stat-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8a6d4f;
+  line-height: 1.5;
 }
 
 #log {

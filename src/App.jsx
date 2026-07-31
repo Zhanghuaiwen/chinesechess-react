@@ -2,13 +2,15 @@ import { useEffect, useRef } from 'react';
 import useGame from './hooks/useGame';
 import Board from './components/Board';
 import GameInfo from './components/GameInfo';
+import StatsPanel from './components/StatsPanel';
 import './App.css';
 
 export default function App() {
   const {
     board, current, selected, marks,
     gameOver, aiEnabled, aiThinking, difficulty, log,
-    onCellClick, reset, toggleAI, changeDifficulty, triggerAIMove,
+    aiStats,
+    onCellClick, reset, undo, toggleAI, changeDifficulty, triggerAIMove,
   } = useGame();
 
   const prevAITrigger = useRef(null);
@@ -34,6 +36,7 @@ export default function App() {
           difficulty={difficulty}
           log={log}
           onReset={reset}
+          onUndo={undo}
           onToggleAI={toggleAI}
           onChangeDifficulty={changeDifficulty}
         />
@@ -44,6 +47,7 @@ export default function App() {
           onCellClick={onCellClick}
         />
       </div>
+      <StatsPanel board={board} stats={aiStats} />
     </div>
   );
 }

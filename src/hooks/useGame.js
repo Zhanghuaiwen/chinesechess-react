@@ -12,9 +12,12 @@ export default function useGame() {
   const [aiThinking, setAiThinking] = useState(false);
   const [difficulty, setDifficulty] = useState('medium');
   const [log, setLog] = useState('红方先行，点击棋子开始');
+  const [history, setHistory] = useState([]);
+  const [aiStats, setAiStats] = useState({ nodes: 0, prunes: 0, moves: 0, lastNodes: 0, lastPrunes: 0, lastDepth: 0, lastTimeMs: 0 });
   const aiRef = useRef(false);
 
   const doMove = useCallback((from, to) => {
+    setHistory(prev => [...prev, { board, current, gameOver }]);
     const { board: newBoard, captured } = makeMove(board, from, to);
     const next = current === 'red' ? 'black' : 'red';
 
@@ -34,7 +37,7 @@ export default function useGame() {
     setMarks([]);
     setLog(`${next === 'red' ? '请红方走棋' : 'AI思考中...'}`);
     return { board: newBoard, next, gameOver: false };
-  }, [board, current]);
+  }, [board, current, gameOver]);
 
   const onCellClick = useCallback((r, c) => {
     if (aiThinking || gameOver) return;
@@ -80,9 +83,31 @@ export default function useGame() {
     setMarks([]);
     setGameOver(null);
     setAiThinking(false);
+    setHistory([]);
+    setAiStats({ nodes: 0, prunes: 0, moves: 0, lastNodes: 0, lastPrunes: 0, lastDepth: 0, lastTimeMs: 0 });
     aiRef.current = false;
     setLog('棋盘已重置，红方先行');
   }, []);
+
+  const undo = useCallback(() => {
+    if (aiThinking || history.length === 0) return;
+
+    const popCount = aiEnabled
+      ? Math.min(current === 'black' ? 1 : 2, history.length)
+      : 1;
+    const newHistory = history.slice(0, history.length - popCount);
+    const snapshot = history[history.length - popCount];
+
+    setHistory(newHistory);
+    setBoard(snapshot.board);
+    setCurrent(snapshot.current);
+    setGameOver(snapshot.gameOver);
+    setSelected(null);
+    setMarks([]);
+    aiRef.current = false;
+    setAiThinking(false);
+    setLog('已悔棋，请重新走棋');
+  }, [aiThinking, history, aiEnabled, current]);
 
   const toggleAI = useCallback(() => {
     setAiEnabled(prev => !prev);
@@ -102,14 +127,23 @@ export default function useGame() {
 
     setTimeout(() => {
       try {
-        const move = getAIMove(board, difficulty);
-        if (!move) {
+        const result = getAIMove(board, difficulty);
+        if (!result || !result.move) {
           setLog('AI无合法走法');
           setAiThinking(false);
           aiRef.current = false;
           return;
         }
-        doMove(move.from, move.to);
+        setAiStats(prev => ({
+          nodes: prev.nodes + result.nodes,
+          prunes: prev.prunes + result.prunes,
+          moves: prev.moves + 1,
+          lastNodes: result.nodes,
+          lastPrunes: result.prunes,
+          lastDepth: result.depth,
+          lastTimeMs: result.timeMs,
+        }));
+        doMove(result.move.from, result.move.to);
       } catch {
         setLog('AI走棋异常');
       }
@@ -121,6 +155,7 @@ export default function useGame() {
   return {
     board, current, selected, marks,
     gameOver, aiEnabled, aiThinking, difficulty, log,
-    onCellClick, reset, toggleAI, changeDifficulty, triggerAIMove,
+    history, aiStats,
+    onCellClick, reset, undo, toggleAI, changeDifficulty, triggerAIMove,
   };
 }

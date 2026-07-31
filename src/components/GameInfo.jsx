@@ -1,6 +1,6 @@
 import { DIFFICULTY } from '../services/aiService';
 
-export default function GameInfo({ current, gameOver, aiEnabled, aiThinking, difficulty, log, onReset, onToggleAI, onChangeDifficulty }) {
+export default function GameInfo({ current, gameOver, aiEnabled, aiThinking, difficulty, log, onReset, onUndo, onToggleAI, onChangeDifficulty }) {
   const turnLabel = current === 'red' ? '红' : '黑';
 
   return (
@@ -21,6 +21,7 @@ export default function GameInfo({ current, gameOver, aiEnabled, aiThinking, dif
 
       <div className="controls">
         <button onClick={onReset}>重新开局</button>
+        <button onClick={onUndo} disabled={aiThinking}>悔棋</button>
         <button onClick={onToggleAI}>
           {aiEnabled ? '关闭AI' : '开启AI'}
         </button>
