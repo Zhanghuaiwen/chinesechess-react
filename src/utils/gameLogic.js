@@ -223,4 +223,102 @@ export function evaluateBoard(board) {
   return score;
 }
 
+export function findKing(board, color) {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = board[r][c];
+      if (p && p.type === "king" && p.color === color) return { r, c };
+    }
+  }
+  return null;
+}
+
+export function isInCheck(board, color) {
+  const king = findKing(board, color);
+  if (!king) return false;
+  const opp = color === "red" ? "black" : "red";
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = board[r][c];
+      if (!p || p.color !== opp) continue;
+      const moves = getLegalMoves(board, r, c);
+      for (const m of moves) {
+        if (m.r === king.r && m.c === king.c) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isMoveSafe(board, from, to, color) {
+  const { board: nb } = makeMove(board, from, to);
+  return !isInCheck(nb, color);
+}
+
+export function getSafeMoves(board, r, c) {
+  const p = board[r][c];
+  if (!p) return [];
+  return getLegalMoves(board, r, c).filter(m => isMoveSafe(board, { r, c }, m, p.color));
+}
+
+export function hasLegalMove(board, color) {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = board[r][c];
+      if (p && p.color === color && getSafeMoves(board, r, c).length > 0) return true;
+    }
+  }
+  return false;
+}
+
+export function boardKey(board, color) {
+  const rows = board.map(row =>
+    row.map(cell => (cell ? cell.color[0] + cell.type : ".")).join(""),
+  );
+  return rows.join("/") + "|" + color;
+}
+
+const CN_NUM = ["一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+const PIECE_NAMES = {
+  red: { king: "帅", rook: "车", knight: "马", cannon: "炮", bishop: "相", advisor: "仕", pawn: "兵" },
+  black: { king: "将", rook: "车", knight: "马", cannon: "炮", bishop: "象", advisor: "士", pawn: "卒" },
+};
+
+function fileLabel(color, c) {
+  return color === "red" ? CN_NUM[8 - c] : CN_NUM[c];
+}
+
+export function generateNotation(board, from, to, color) {
+  const p = board[from.r][from.c];
+  const name = PIECE_NAMES[color][p.type];
+  const isRed = color === "red";
+  const advance = isRed ? to.r < from.r : to.r > from.r;
+  const retreat = isRed ? to.r > from.r : to.r < from.r;
+
+  let verb;
+  if (!advance && !retreat) {
+    verb = `平${fileLabel(color, to.c)}`;
+  } else if (p.type === "rook" || p.type === "cannon" || p.type === "pawn" || p.type === "king") {
+    const steps = Math.abs(to.r - from.r);
+    verb = `${advance ? "进" : "退"}${CN_NUM[steps - 1]}`;
+  } else {
+    verb = `${advance ? "进" : "退"}${fileLabel(color, to.c)}`;
+  }
+
+  const same = [];
+  for (let r = 0; r < ROWS; r++) {
+    const q = board[r][from.c];
+    if (q && q.color === color && q.type === p.type) same.push(r);
+  }
+  if (same.length >= 2) {
+    const ordered = [...same].sort((a, b) => (isRed ? a - b : b - a));
+    const idx = ordered.indexOf(from.r);
+    if (idx === 0) return `前${name}${verb}`;
+    if (idx === 1) return `后${name}${verb}`;
+  }
+
+  return `${name}${fileLabel(color, from.c)}${verb}`;
+}
+
 

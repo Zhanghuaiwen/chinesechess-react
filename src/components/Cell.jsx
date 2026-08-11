@@ -1,5 +1,6 @@
-export default function Cell({ piece, isSelected, isMarked, onClick }) {
+export default function Cell({ dataPos, isPalace, piece, isSelected, isMarked, isChecked, isLastFrom, isLastTo, isCapture, onClick }) {
   let className = 'cell';
+  if (isPalace) className += ' palace';
   if (piece) {
     className += ` ${piece.color}`;
   } else {
@@ -7,9 +8,13 @@ export default function Cell({ piece, isSelected, isMarked, onClick }) {
   }
   if (isSelected) className += ' selected';
   if (isMarked) className += ' mark';
+  if (isChecked) className += ' checked';
+  if (isLastFrom) className += ' last-from';
+  if (isLastTo) className += ' last-to';
+  if (isCapture) className += ' capture';
 
   return (
-    <div className={className} onClick={onClick}>
+    <div className={className} data-pos={dataPos} onClick={onClick}>
       {piece ? piece.label : ''}
     </div>
   );

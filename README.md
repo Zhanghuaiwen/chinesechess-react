@@ -23,16 +23,18 @@ src/
 ├── App.jsx                   # 根组件，组装布局 & 调度 AI 触发
 ├── App.css                   # 全局样式
 ├── hooks/
-│   └── useGame.js            # 核心游戏状态机（棋盘、回合、AI 编排）
+│   └── useGame.js            # 核心游戏状态机（棋盘、回合、计时、AI 编排）
 ├── components/
-│   ├── Board.jsx             # 10×9 棋盘网格
-│   ├── Cell.jsx              # 单格组件（棋子渲染、选中/标记高亮）
-│   ├── GameInfo.jsx          # 状态栏（回合显示、难度选择、操作按钮）
+│   ├── Board.jsx             # 10×9 棋盘网格 + 棋子慢速滑行动画
+│   ├── Cell.jsx              # 单格组件（棋子渲染、选中/将军/落子高亮）
+│   ├── GameInfo.jsx          # 状态栏（回合/计时器/难度/先手/时限/操作按钮）
+│   ├── MoveList.jsx          # 棋谱列表（中国象棋记谱，点击回放）
 │   └── StatsPanel.jsx        # 对局数据面板（节点数、剪枝数、局面评估）
 ├── services/
 │   └── aiService.js          # AI 搜索引擎（Minimax + Alpha-Beta）
 └── utils/
-    └── gameLogic.js          # 游戏规则引擎（走法生成、合法性校验、局面评估）
+    ├── gameLogic.js          # 游戏规则引擎（走法生成、将军/困毙检测、记谱、局面评估）
+    └── sound.js              # 音效模块（Web Audio 合成：落子/吃子/选中/将军/开局等）
 ```
 
 ## AI 引擎设计
@@ -107,14 +109,16 @@ score = Σ(红方棋子价值) - Σ(黑方棋子价值)
 **困难模式的迭代加深** (Iterative Deepening)：
 
 ```
-function iterativeDeepening(board, maxDepth, timeBudget):
+function iterativeDeepening(board, maxDepth, timeBudget, isMaximizing):
   start = performance.now()
   for depth = 1 to maxDepth:
     if elapsed >= timeBudget: break
-    result = minimax(board, depth, -Infinity, Infinity, false)
+    result = minimax(board, depth, -Infinity, Infinity, isMaximizing)
     bestMove = result.move
   return bestMove
 ```
+
+`getAIMove(board, difficulty, aiColor)` 支持 AI 执红或执黑：AI 执红走 Maximizer（`isMaximizing = true`），执黑走 Minimizer。
 
 从 depth=1 开始逐层加深，每层完成后检查时间预算。若超时，返回上一层已完整搜索的最佳走法，保证在最坏情况下也有合理走法返回。
 
@@ -147,10 +151,56 @@ function iterativeDeepening(board, maxDepth, timeBudget):
 
 `useGame` 维护一个 `history` 栈，每次 `doMove` 落子前将**当前快照** `{ board, current, gameOver }` 压栈。悔棋逻辑按对局模式决定回退层数：
 
-- **AI 模式**：回退 2 层（撤销 AI 应手 + 玩家本手），若当前为黑方回合则回退 1 层
+- **AI 模式**：回退 2 层（撤销 AI 应手 + 玩家本手），若当前为 AI 回合则回退 1 层
 - **双人对弈模式**（关闭 AI）：回退 1 层
 
-悔棋恢复时同步清除选中态/标记，并重置 AI 防重入锁（`aiRef`）与思考状态，避免残留的定时器触发异常走子。
+悔棋恢复时同步清除选中态/标记，并重置 AI 防重入锁（`aiRef`）与思考状态，避免残留的定时器触发异常走子；同时截断棋谱 `moves`、重新计算将军状态与落子高亮。
+
+## 产品功能
+
+### 1. 将军提示
+
+- 落子后调用 `isInCheck(newBoard, next)` 检测对方是否被将军
+- 若被将军：棋盘上被将军的将/帅格子**红色脉冲高亮**，顶栏弹出红色 **"将军！"** 徽章，并播放警示音效
+
+### 2. 胜负判定补全
+
+完整的终局判定（`doMove` 内按序检查）：
+
+| 情形 | 判定 | 说明 |
+| ---- | ---- | ---- |
+| 吃掉将/帅 | 直接判负 | 保留原逻辑 |
+| 无合法走法 + 被将军 | **将死** | 攻击方获胜 |
+| 无合法走法 + 未被将军 | **困毙** | 按中国象棋规则，无子可走的一方判负 |
+| 同一局面出现 3 次 | **三次重复判和** | 通过 `boardKey`（棋盘序列化 + 行棋方）计数，覆盖常见长将/长捉场景 |
+
+人类玩家走子使用 `getSafeMoves`（过滤掉会送将的走法），确保不会走出暴露己方将/帅的非法棋；AI 仍使用伪合法走法 + 吃将检测（见上）。
+
+### 3. 中国象棋记谱 + 走法回放
+
+`generateNotation(board, from, to, color)` 生成标准中式记谱：
+
+- 红方使用中文数字（一~九）、黑方使用阿拉伯数字（1~9），从各自身边右往左编号
+- 直行棋（车/炮/兵/帅将）用"进/退 + 步数"，跳跃棋（马/相/士）用"进/退 + 目标纵线"，横向用"平 + 目标纵线"
+- 同一直线上同型双子用"前/后"区分（如前车进一）
+
+示例：`炮二平五`、`马8进7`、`车三进二`、`兵七进一`。
+
+棋谱以"回合"为行展示在棋盘下方（红先黑后），**点击任意一手可回放**到该局面：截断 `history`/`moves` 并从该位置继续对局（若回放到 AI 回合且 AI 开启，AI 会接管续走）。
+
+### 4. 先手选择 + 计时器
+
+- **先手选择**：可切换"玩家先手"（AI 执黑）或"AI 先手"（AI 执红），`aiService` 通过 `aiColor` 参数决定搜索侧（AI 执红时走 Maximizer）
+- **计时器**：每方 N 分钟（5/10/20 分钟或不限时），走子方倒计时；任一方超时判负（`setInterval` 每秒递减，`current` 切换时重启）
+- **开始流程（Ready / Go 倒计时）**：进入页面后对局处于"未开始"状态（计时器不启动、不能走子），棋盘上有半透明遮罩与"开始对局"按钮；点击后播放 Ready 提示音并在遮罩上弹出 **"Ready"**，等待 1 秒后弹出 **"Go!"** 并播放 Go 音效，再经 100ms 正式开钟开赛；重新开局后回到该状态
+- **设置面板**：先手/时限/AI难度/音效统一收纳在"设置"弹出的**浮层卡片**中（`position: fixed` 全屏遮罩，背景变暗），不改变主界面宽度；打开设置即**暂停**对局（计时器停止、AI 与玩家走子全部挂起），点"完成"或点击遮罩关闭并恢复
+
+### 5. 动画与音效
+
+- **慢速滑行动画**：每次落子后，棋子会以约 650ms 的过渡时长**从起点格平滑滑行到目标格**（`Board.jsx` 中通过绝对定位的 `floating-piece` 浮层 + Web Animations API 的显式 from→to 关键帧实现，起止坐标由 DOM 实测获取，不依赖写死坐标），滑行结束落位时触发落子/吃子音效；同时保留落位缩放、吃子红闪、末手橙光、被将军红脉冲等反馈
+- **选中音效**：点击选中己方棋子时播放**敲击木头**的音效（Web Audio 滤波噪声合成）
+- **开局音效**：点击"开始对局"播放 Ready 提示音，1 秒后播放 Go 提示音，与遮罩上的 Ready/Go 倒计时同步
+- **音效**：`sound.js` 用 Web Audio API 实时合成（零音频资源），区分落子/吃子/选中/将军/获胜/落败/和棋/Ready/Go 等音效，设置面板内提供"音效: 开/关"切换
 
 ## 游戏规则实现
 
@@ -164,7 +214,7 @@ function iterativeDeepening(board, maxDepth, timeBudget):
 - **炮 (Cannon)**：直线滑动，吃子需隔一子（炮架）
 - **兵/卒 (Pawn)**：过河前只能前进，过河后可左右
 
-走法生成后不做将军检测过滤——搜索算法在递归中通过吃将/帅自动处理将军与将杀。
+走法生成（`getLegalMoves`）不做将军过滤——AI 搜索在递归中通过吃将/帅自动处理将军与将杀；人类玩家走子则经 `getSafeMoves` 过滤，防止送将。辅助函数：`isInCheck`（将军检测，含飞将）、`hasLegalMove`（困毙/将死判定）、`boardKey`（三次重复判和的局面指纹）。
 
 ## 快速开始
 

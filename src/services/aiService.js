@@ -75,8 +75,9 @@ function minimax(board, depth, alpha, beta, isMaximizing, stats) {
   }
 }
 
-function iterativeDeepening(board, maxDepth, timeBudget, stats) {
-  const allMoves = getAllLegalMoves(board, 'black');
+function iterativeDeepening(board, maxDepth, timeBudget, stats, isMaximizing) {
+  const color = isMaximizing ? 'red' : 'black';
+  const allMoves = getAllLegalMoves(board, color);
   if (allMoves.length <= 1) return allMoves[0] || null;
 
   let bestMove = allMoves[0];
@@ -85,23 +86,24 @@ function iterativeDeepening(board, maxDepth, timeBudget, stats) {
   for (let d = 1; d <= maxDepth; d++) {
     if (performance.now() - start >= timeBudget) break;
     stats.depthReached = d;
-    const result = minimax(board, d, -Infinity, Infinity, false, stats);
+    const result = minimax(board, d, -Infinity, Infinity, isMaximizing, stats);
     if (result.move) bestMove = result.move;
   }
 
   return bestMove;
 }
 
-export function getAIMove(board, difficulty = 'medium') {
+export function getAIMove(board, difficulty = 'medium', aiColor = 'black') {
   const config = DIFFICULTY[difficulty] || DIFFICULTY.medium;
   const stats = { nodes: 0, prunes: 0, depthReached: 0 };
   const start = performance.now();
+  const isMaximizing = aiColor === 'red';
 
   let move = null;
   if (difficulty === 'hard') {
-    move = iterativeDeepening(board, config.depth, 8000, stats);
+    move = iterativeDeepening(board, config.depth, 8000, stats, isMaximizing);
   } else {
-    const result = minimax(board, config.depth, -Infinity, Infinity, false, stats);
+    const result = minimax(board, config.depth, -Infinity, Infinity, isMaximizing, stats);
     move = result.move;
   }
 
