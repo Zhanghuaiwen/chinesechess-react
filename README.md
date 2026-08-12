@@ -11,9 +11,10 @@
 | 语言    | JavaScript (JSX)         |
 | 静态检查 | oxlint                  |
 | AI 引擎 | Minimax + Alpha-Beta 剪枝（自实现，无外部依赖） |
+| 分析引擎 | Pikafish（本地 UCI 中国象棋引擎，经 Vite 中间件常驻子进程） |
 | 样式    | 原生 CSS（无 UI 框架）    |
 
-零 AI 运行时依赖——不依赖 Ollama、LLM API 或任何第三方 AI 服务。所有决策逻辑在浏览器中本地运行。
+零 AI 运行时依赖——不依赖 Ollama、LLM API 或任何第三方 AI 服务。对局 AI（Minimax + Alpha-Beta）完全在浏览器本地运行；右侧 Pikafish 分析面板则由**本地原生引擎**驱动（详见下文"Pikafish 实时分析面板"），同样不访问任何在线服务。
 
 ## 项目结构
 
@@ -29,12 +30,27 @@ src/
 │   ├── Cell.jsx              # 单格组件（棋子渲染、选中/将军/落子高亮）
 │   ├── GameInfo.jsx          # 状态栏（回合/计时器/难度/先手/时限/操作按钮）
 │   ├── MoveList.jsx          # 棋谱列表（中国象棋记谱，点击回放）
-│   └── StatsPanel.jsx        # 对局数据面板（节点数、剪枝数、局面评估）
+│   ├── StatsPanel.jsx        # 对局数据面板（节点数、剪枝数、局面评估）
+│   └── PikafishPanel.jsx     # Pikafish 分析面板（实时胜率/局面分/主要着法评分）
 ├── services/
 │   └── aiService.js          # AI 搜索引擎（Minimax + Alpha-Beta）
 └── utils/
     ├── gameLogic.js          # 游戏规则引擎（走法生成、将军/困毙检测、记谱、局面评估）
+    ├── fen.js                # 棋盘 ↔ UCI FEN / UCI 着法 双向换算（前端与 Node 脚本共享）
     └── sound.js              # 音效模块（Web Audio 合成：落子/吃子/选中/将军/开局等）
+```
+
+Pikafish 引擎集成（Vite 开发服中间件 + Node 工具）：
+
+```
+├── vite-plugin-pikafish.js   # Vite 中间件：常驻 Pikafish.exe 子进程 + POST /__pikafish/analyze 接口
+├── scripts/engine/           # Node 侧 UCI 工具与验证脚本
+│   ├── pikafish-client.js    # UCI 子进程客户端（命令/应答/bestmove 解析）
+│   ├── verify.js             # 13 项棋盘↔UCI 联调验证（npm run engine:verify）
+│   ├── multipv-demo.js       # MultiPV 多着法评分演示
+│   └── wdl-probe.js          # WDL 模型饱和特性探针（验证软胜率必要性）
+└── Pikafish-master/          # Pikafish 引擎源码与编译产物
+    └── release/              # Pikafish.exe + pikafish.nnue（引擎运行必需，与 exe 同目录）
 ```
 
 ## AI 引擎设计
@@ -147,6 +163,89 @@ function iterativeDeepening(board, maxDepth, timeBudget, isMaximizing):
 - **AI走棋次数**：`moves`，AI 已落子数
 - **棋盘价值**：`evaluateBoard(board)`，正值红方占优 / 负值黑方占优（每次渲染实时计算）
 
+## Pikafish 实时分析面板
+
+右侧 "Pikafish" 面板实时展示当前局面的 **实时胜率**、**局面分** 与 **Top 主要着法评分**，由本地 Pikafish 引擎（皮卡鱼，UCI 协议）驱动。每次走子后自动刷新。
+
+### 架构：浏览器 × 原生引擎
+
+浏览器无法直接运行原生 exe，因此采用 **Vite 开发服务器中间件 + 子进程**架构：
+
+```
+Vite 开发服务器
+ ├─ vite-plugin-pikafish.js  ──spawn──> Pikafish.exe（常驻子进程，cwd = release/）
+ │     ├─ POST /__pikafish/analyze  { fen, multiPV, movetime }
+ │     │    ├─ position fen <fen>
+ │     │    ├─ setoption name MultiPV value N / UCI_ShowWDL=true
+ │     │    ├─ go movetime X  → 解析 info…/bestmove
+ │     │    └─ 返回 JSON（bestmove、局面分、Top N 着法及评分、搜索深度）
+ │     └─ 串行搜索队列 / 崩溃自动重启 / 服务器关闭时清理子进程
+ └─ src/components/PikafishPanel.jsx  ──fetch──> 渲染胜率条 / 局面分 / 主要着法
+```
+
+- **棋盘 → FEN**：`src/utils/fen.js` 的 `boardToFEN`（UCI rank = 9 − row、file = col；红方大写 R N B A K C P，黑方小写）
+- **请求策略**：每次走子（`board`/`current` 变化）防抖 500ms 触发一次分析，思考 2 秒、`MultiPV=5`
+- **仅开发/预览可用**：`npm run dev` / `npm run preview` 中间件生效；纯静态 `dist/` 无此接口
+- **引擎前提**：`Pikafish-master/release/` 下须存在 `Pikafish.exe` 与 `pikafish.nnue`（NNUE 权重与 exe 同目录），否则面板显示"引擎未连接"
+
+Node 侧工具（`scripts/engine/`）可直接复用：`npm run engine:verify` 跑 13 项棋盘↔UCI 联调验证。
+
+### 软胜率换算算法（winModel）
+
+Pikafish 自带的 `UCI_ShowWDL` 胜率模型过于陡峭——局面分一旦超过约 300 厘兵（多一个子）就输出 1000‰（必赢），下几步就"钉死"在 100%，对人类观感过于绝对。因此面板**不直接用引擎 WDL**，改用**局面分 → 软胜率**换算，渐进且在有限分差下永不为 100%。
+
+输入仅两项：引擎 `score`（`cp` 厘兵分或 `mate` 杀棋）与当前行棋方 `sideToMove`。
+
+**① 视角归一**：引擎局面分是"行棋方视角"（正 = 行棋方有利），先转为红方视角：
+
+```
+s = sideToMove === 'red' ? score.value : -score.value
+```
+
+**② 杀棋特判**：`score mate N` 直接返回 `红 99% / 和 1% / 黑 0%`（黑方胜则对称）。
+
+**③ 净胜概率（Elo 型 logistic）**：把局面分当作双方"实力差"，`400` 厘兵为一个数量级步长：
+
+```
+win = 100 / (1 + 10^(-s / 400))
+```
+
+| 局面分 s（红方视角） | 对应子力    | win（净胜概率） |
+| ------------------- | ----------- | --------------- |
+| 0                   | 均势        | 50%             |
+| +100                | 多 1 兵     | ≈64%            |
+| +400                | 多 1 马     | ≈89%            |
+| +900                | 多 1 车     | ≈99.5%（渐进）  |
+
+**④ 和棋占比（负指数衰减）**：越接近均势越可能和棋：
+
+```
+draw = round(60 × e^(-|s| / 180))
+```
+
+均势时封顶 60%，分差越大和棋越少；`180` 为衰减半宽（约半个马的差距即基本无和棋空间）。
+
+**⑤ 归一拆分**：先扣除和棋占比，再按 `win` 分配给红/黑，三项之和恒为 100%：
+
+```
+redWin   = round(win × (100 - draw) / 100)
+blackWin = 100 - redWin - draw
+```
+
+**参数标定依据**：`400` 取自引擎子力价值（兵 100 / 马 400 / 炮 450 / 车 900）；`180` 为和棋衰减半宽；`60` 为和棋上限（避免均势显示成"必和"）。
+
+**实际效果示例**（引擎实搜 2.5 秒）：
+
+| 局面       | 局面分 | 面板显示          |
+| ---------- | ------ | ----------------- |
+| 均势       | +23    | 红 25% 和 53% 黑 22% |
+| 红多 1 兵  | +29    | 红 27% 和 51% 黑 22% |
+| 红多 2 兵  | +47    | 红 31% 和 46% 黑 23% |
+| 红多 1 马  | +360   | 红 82% 和 8% 黑 10% |
+| 红多 1 车  | +616   | 红 95% 和 2% 黑 3%  |
+
+> **注意**：① 这是**展示用的人性化换算**，并非引擎官方 WDL——官方模型更陡、更"引擎级严格"；② 胜率随搜索深度/时间轻微波动属正常（局面分本身会收敛）；③ 面板只反映当前局面的评估，与终局结果（将死/困毙/三次重复/超时）无关。
+
 ## 悔棋功能
 
 `useGame` 维护一个 `history` 栈，每次 `doMove` 落子前将**当前快照** `{ board, current, gameOver }` 压栈。悔棋逻辑按对局模式决定回退层数：
@@ -224,6 +323,9 @@ npm install
 
 # 开发模式
 npm run dev
+```
+
+> Pikafish 分析面板仅在 `npm run dev` / `npm run preview` 下可用（由 Vite 中间件常驻本机引擎进程）。若提示"引擎未连接"，请确认 `Pikafish-master/release/Pikafish.exe` 与 `pikafish.nnue` 存在。
 
 # 生产构建
 npm run build

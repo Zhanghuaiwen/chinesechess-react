@@ -4,6 +4,7 @@ import Board from './components/Board';
 import GameInfo from './components/GameInfo';
 import StatsPanel from './components/StatsPanel';
 import MoveList from './components/MoveList';
+import PikafishPanel from './components/PikafishPanel';
 import './App.css';
 
 export default function App() {
@@ -110,6 +111,7 @@ export default function App() {
         </div>
         </div>
         {aiEnabled && <StatsPanel board={board} stats={aiStats} />}
+        <PikafishPanel board={board} current={current} moveSeq={moveSeq} />
       </div>
     </div>
   );
