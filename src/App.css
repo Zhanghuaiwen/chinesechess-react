@@ -909,3 +909,104 @@
   color: #8a6d4f;
   font-size: 12px;
 }
+
+/* ─────────────────────────── 大师辅助 UI ─────────────────────────── */
+
+/* 热力图/着法指示器 Canvas 覆盖层：悬于棋盘之上但不拦截任何点击 */
+.heatmap-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  border-radius: 28px;
+  pointer-events: none;
+}
+
+/* 棋盘上方的辅助栏：按钮以"普通排版"形式存在，绝不遮住棋盘 */
+.assist-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
+/* 科技感切换按钮 */
+.master-btn {
+  padding: 6px 16px;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #f5e8d8;
+  background: linear-gradient(180deg, #4a5b70 0%, #2c3e50 100%);
+  border: 1px solid rgba(245, 232, 216, 0.5);
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: all 0.22s ease;
+}
+
+.master-btn:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 5px 14px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.master-btn:active {
+  transform: translateY(0);
+}
+
+/* 开启后：琥珀色科技辉光 */
+.master-btn.active {
+  color: #ffe9b3;
+  background: linear-gradient(180deg, #3b2f14 0%, #5a4a22 100%);
+  border-color: rgba(241, 196, 15, 0.65);
+  box-shadow:
+    0 0 12px rgba(241, 196, 15, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* 侧边栏模式徽标 */
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pf-mode {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 20px;
+  letter-spacing: 1px;
+  background: #d9c8a9;
+  color: #6f4f37;
+}
+
+.pf-mode.deep {
+  background: #f1c40f;
+  color: #3d2b1a;
+  box-shadow: 0 0 8px rgba(241, 196, 15, 0.6);
+}
+
+/* 走法得分着色：正分红 +xxx，负分蓝 -xxx */
+.pf-move-score.pf-pos {
+  color: #c0392b;
+}
+
+.pf-move-score.pf-neg {
+  color: #21618c;
+}
+
+.pf-move-score.pf-eq {
+  color: #8a6d4f;
+}
+
+/* 深度模式：全量着法列表可滚动 */
+.pf-moves-deep {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #b89b7a transparent;
+}

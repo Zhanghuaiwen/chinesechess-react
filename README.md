@@ -34,6 +34,11 @@ src/
 │   └── PikafishPanel.jsx     # Pikafish 分析面板（实时胜率/局面分/主要着法评分）
 ├── services/
 │   └── aiService.js          # AI 搜索引擎（Minimax + Alpha-Beta）
+├── engine/                   # Pikafish 分析：事件驱动控制 + Canvas 可视化（V2 增量）
+│   ├── EngineController.js   # 引擎控制器（订阅快照、seq 失效主导、启动即分析、超时安全阀）
+│   ├── UIManager.js          # 引擎数据 → 侧边栏 / 热力图 / 指示器 的纯数据编排（红方视角统一）
+│   ├── HeatmapRenderer.js    # 棋盘热力图 Canvas 覆盖层（rAF 防抖合并重绘 + 脉动喂帧）
+│   └── MoveIndicatorRenderer.js # 走法相对强度指示器（分级阈值、getGradientColor、Top1 脉动）
 └── utils/
     ├── gameLogic.js          # 游戏规则引擎（走法生成、将军/困毙检测、记谱、局面评估）
     ├── fen.js                # 棋盘 ↔ UCI FEN / UCI 着法 双向换算（前端与 Node 脚本共享）
@@ -254,6 +259,49 @@ blackWin = 100 - redWin - draw
 - **双人对弈模式**（关闭 AI）：回退 1 层
 
 悔棋恢复时同步清除选中态/标记，并重置 AI 防重入锁（`aiRef`）与思考状态，避免残留的定时器触发异常走子；同时截断棋谱 `moves`、重新计算将军状态与落子高亮。
+
+## 大师辅助与稳定性增强（V2 增量）
+
+面向面试的高频工程点，均可通过 🔍 大师辅助按钮现场演示。
+
+### 1. 事件驱动分析 + 启动即分析
+
+- 弃用"每步固定延时轮询"，改为**落子回调显式触发一次分析**；服务端常驻单一引擎会话 + 串行队列，客户端以递增 `seq` 失效标记保证**永远只有最后一次请求生效**——旧请求返回 `stale` 静默丢弃，不积压、不覆盖。
+- 首次分析（棋盘初始化后）自动走 `go movetime 300` 快速研判，消除首屏右侧面板空白；后续按 `light(500ms/前5路)` 与 `deep(全量 MultiPV)` 自动升降级。
+- `fetch` 侧加 **AbortController 20s 超时**安全阀，引擎异常不再让面板永久"加载中"。
+
+### 2. 大师辅助走法推荐 —— 相对强度可视化
+
+点击己方棋子后：
+
+- **黄/暖色系实心发光圆点** = 优等走法：半径 `6px + (score / maxScore) × 14px`、透明度 0.6→1.0 线性映射，Top1 以 1.5s 周期 sin 缓动作 1.0→1.15 脉动——0.1 秒内锁定"神之一手"；
+- **绿色小圆点** = 其余合法走法，保留"哪里能走"的完整信息（辅助开启不丢走法可见性）；
+- 单走法棋子特判为薄荷绿固定圆点（无对比，不做缩放）。
+- 全部颜色收敛在单一 `getGradientColor(score, maxScore)` 映射函数，绘制层零硬编码色值。
+
+### 3. 一次"整应用白屏"的雷区（重点复盘）
+
+点击棋子后所有界面消失，根因不在渲染，而在 effect 中抛出的 `TypeError`：
+
+```
+// HeatmapRenderer 只导出了一个"鸭式对象"，buildAndRate 并不存在
+export const MoveIndicatorRenderer = { draw }   
+// App 却调用 MoveIndicatorRenderer.buildAndRate(...)
+//   → undefined is not a function → effect 未捕获异常
+// React 19 默认 unmount 整棵应用树 → 白屏
+```
+
+修复：**直连真实现** `import { buildAndRate } from .../MoveIndicatorRenderer`，并删除误导性的鸭式 re-export。
+
+配套的工程级鲁棒性：
+
+- 所有"数据派生 → 渲染"的 effect 包 `try/catch`：异常只清空覆盖层并记日志，绝不扩散到 React 渲染树；
+- 绘制循环单点 `try/catch` + 半径钳制 + 空 geo 兜底：某个指示器画不出不影响其余；
+- 竞态源头治理：`analyzeOnLoad()` 改为幂等护栏（`_analyzedOnce` 状态锁），首次分析并入主请求链路，挂载期只发**一个**请求。
+
+### 4. 视角统一（红方视角）
+
+引擎分数以"行棋方"为正，所有数据统一换算到红方视角（黑方行棋时取反），侧边栏评分、热力图冷暖、走法指示器的语义全程一致。
 
 ## 产品功能
 

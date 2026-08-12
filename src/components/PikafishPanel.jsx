@@ -1,17 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { boardToFEN, uciToMove } from '../utils/fen';
-import { generateNotation } from '../utils/gameLogic';
+import { useEffect, useState } from 'react';
+import { engine } from '../engine/EngineController';
+import { UIManager } from '../engine/UIManager';
 
-const ANALYZE_URL = '/__pikafish/analyze';
-
-function moverScore(score) {
-  if (!score) return null;
-  if (score.type === 'mate') return score.value > 0 ? `杀${score.value}` : `被杀${-score.value}`;
-  const v = score.value / 100;
-  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
-}
-
-// 用局面分换算“软胜率”，避免引擎 WDL 模型在领先约 300 厘兵后就钉死在 100%。
+// 用局面分换算"软胜率"，避免引擎 WDL 模型在领先约 300 厘兵后就钉死在 100%。
 // logistic(scale=400): 多1兵(+100)≈64%, 多1马(+400)≈88%, 多1车(+900)≈95%, 永不归1。
 function winModel(data) {
   if (!data.score) return null;
@@ -42,66 +33,40 @@ function redScore(data) {
   };
 }
 
-export default function PikafishPanel({ board, current, moveSeq }) {
-  const [state, setState] = useState({ loading: true, ok: false, data: null, error: null });
-  const seqRef = useRef(0);
+export default function PikafishPanel({ board, current }) {
+  // 订阅引擎控制器的快照：事件驱动更新，不再组件内自行轮询/延时取数。
+  const [analysis, setAnalysis] = useState(() => engine.getState());
+  useEffect(() => engine.subscribe(setAnalysis), []);
 
-  useEffect(() => {
-    const fen = boardToFEN(board, current);
-    const seq = ++seqRef.current;
-    setState((s) => ({ ...s, loading: true }));
-
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(ANALYZE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fen, multiPV: 5, movetime: 2000 }),
-        });
-        const data = await res.json();
-        if (seq !== seqRef.current) return;
-        if (!data.ok) throw new Error(data.error || '引擎异常');
-        setState({ loading: false, ok: true, data, error: null });
-      } catch (e) {
-        if (seq !== seqRef.current) return;
-        setState({ loading: false, ok: false, data: null, error: String(e?.message || e) });
-      }
-    }, 500);
-
-    return () => clearTimeout(t);
-  }, [board, current, moveSeq]);
-
-  const { loading, ok, data, error } = state;
-  const wdl = data ? winModel(data) : null;
-  const score = data ? redScore(data) : null;
-
-  const moves = [];
-  if (ok && data) {
-    for (const m of data.moves) {
-      if (!m.move) continue;
-      const mv = uciToMove(m.move);
-      let notation;
-      try {
-        notation = generateNotation(board, mv.from, mv.to, current);
-      } catch {
-        notation = m.move;
-      }
-      moves.push({ rank: m.rank, notation, score: moverScore(m.score) });
-    }
+  const { loading, data, error, mode } = analysis;
+  // 引擎数据防御：任何字段异常都不允许泄漏到 React 渲染树导致白屏。
+  let wdl = null;
+  let score = null;
+  let rows = [];
+  try {
+    wdl = data ? winModel(data) : null;
+    score = data ? redScore(data) : null;
+    const side = data?.sideToMove || current;
+    rows = UIManager.buildSidebarRows(data, board, side, mode === 'deep' ? Infinity : 5);
+  } catch (e) {
+    console.error('[PikafishPanel] render derive error:', e);
   }
 
   return (
     <div className="pikafish-panel">
-      <div className="stats-header">Pikafish</div>
+      <div className="stats-header">
+        Pikafish
+        <span className={`pf-mode ${mode}`}>{mode === 'deep' ? '大师辅助' : '标准'}</span>
+      </div>
 
-      {loading && ok === false && error === null && (
+      {loading && !error && (
         <div className="pf-status">分析中...</div>
       )}
-      {!ok && error !== null && (
+      {!loading && error && (
         <div className="pf-status pf-error">引擎未连接<br />{error}</div>
       )}
 
-      {ok && data && (
+      {!loading && data && (
         <>
           <div className="pf-metric">
             <div className="pf-label">实时胜率</div>
@@ -138,17 +103,15 @@ export default function PikafishPanel({ board, current, moveSeq }) {
 
           <div className="pf-moves-title">
             主要着法
-            {data.depth ? <span className="pf-depth">深度 {data.depth}</span> : null}
+            {data.depth ? <span className="pf-depth">深度 {data.depth} · {rows.length} 路</span> : null}
           </div>
-          <div className="pf-moves">
-            {moves.length === 0 && <div className="pf-muted">暂无数据</div>}
-            {moves.map((m) => (
+          <div className={`pf-moves ${mode === 'deep' ? 'pf-moves-deep' : ''}`}>
+            {rows.length === 0 && <div className="pf-muted">暂无数据</div>}
+            {rows.map((m) => (
               <div className="pf-move-row" key={m.rank}>
                 <span className="pf-move-rank">{m.rank}</span>
                 <span className="pf-move-notation">{m.notation}</span>
-                <span className={`pf-move-score ${m.score?.startsWith('+') ? 'pf-good' : m.score?.startsWith('-') || m.score?.includes('被杀') ? 'pf-bad' : ''}`}>
-                  {m.score}
-                </span>
+                <span className={`pf-move-score pf-${m.tone}`}>{m.text}</span>
               </div>
             ))}
           </div>

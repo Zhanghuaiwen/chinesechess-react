@@ -1,9 +1,34 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { PikafishClient } from './scripts/engine/pikafish-client.js';
+import { fenToBoard } from './src/utils/fen.js';
+import { getAllLegalMoves } from './src/utils/gameLogic.js';
 
 const RELEASE = join(dirname(fileURLToPath(import.meta.url)), 'Pikafish-master', 'release');
 const EXE = join(RELEASE, 'Pikafish.exe');
+
+// 实测：Pikafish 对超过 ~128 的 MultiPV 会静默拒不应用并回归默认 1！
+// 因此以 128 为硬上限，再用当前局面真实合法着法数精确收敛，确保"一个不漏"。
+const MAX_ENGINE_MULTIPV = 128;
+
+/** 计算当前局面行棋方真实合法着法数（用于把 MultiPV 收敛到"最大合法走法数"）。 */
+function legalMoveCount(fen) {
+  try {
+    const { board, sideToMove } = fenToBoard(fen);
+    return getAllLegalMoves(board, sideToMove).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** 把请求的 MultiPV 收敛到引擎可接受且不漏着法的值。 */
+function capMultiPV(requested, fen) {
+  if (!(requested > 1)) return 1;
+  let v = Math.min(MAX_ENGINE_MULTIPV, Math.max(1, requested));
+  const legal = legalMoveCount(fen);
+  if (legal > 0) v = Math.min(v, legal);
+  return Math.max(1, v);
+}
 
 const sendJson = (res, code, obj) => {
   res.statusCode = code;
@@ -24,7 +49,7 @@ function parseInfoLine(l) {
   };
 }
 
-/** 从一次 go 的输出行里，取每路 multipv 最深的一条，并汇总局面分/胜率。 */
+/** 从一次搜索的输出行里，取每路 multipv 最深的一条，并汇总局面分/胜率。 */
 function summarize(lines) {
   const by = new Map();
   for (const l of lines) {
@@ -46,13 +71,16 @@ function summarize(lines) {
   return { moves, score: best?.score ?? null, wdl: best?.wdl ?? null, depth: best?.depth ?? null };
 }
 
-/** 常驻引擎宿主：惰性启动、单会话、串行搜索、崩溃后自动重启。 */
+/** 常驻引擎宿主：惰性启动、单会话、串行搜索、崩溃后自动重启、旧请求即时"让路"。 */
 class EngineHost {
   constructor({ threads = 4, hash = 64 } = {}) {
     this.threads = threads;
     this.hash = hash;
     this.engine = null;
     this.queue = Promise.resolve();
+    this.latest = 0;      // 最新一次请求的 id，旧的排队请求据此视为 stale 直接跳过
+    this.searching = false;
+    this._wake = null;    // go infinite 模式下的可中断延时
   }
 
   async ensure() {
@@ -67,32 +95,91 @@ class EngineHost {
     return this.engine;
   }
 
-  analyze(fen, multiPV, movetime) {
-    const run = async () => {
-      const engine = await this.ensure();
-      const start = engine.lines.length;
-      engine.send(`setoption name MultiPV value ${multiPV}`);
-      engine.setPositionFEN(fen);
-      engine.go({ movetime });
-      const bm = await engine.awaitBestmove(30000);
-      if (!bm.bestmove) throw new Error('引擎未返回着法');
-      const lines = engine.lines.slice(start);
-      const { moves, score, wdl, depth } = summarize(lines);
-      return {
-        bestmove: bm.bestmove,
-        ponder: bm.ponder || null,
-        moves,
-        score,
-        wdl,
-        depth,
+  /** 打断当前正在进行的搜索（发 stop + 唤醒延时），让引擎尽快交还搜索权。 */
+  interrupt() {
+    if (this._wake) {
+      const w = this._wake;
+      this._wake = null;
+      w();
+    }
+    if (this.engine && this.searching) {
+      try {
+        this.engine.send('stop');
+      } catch {}
+    }
+  }
+
+  /** 可被 interrupt() 提前唤醒的延时（用于 go infinite -> stop 的收集窗口）。 */
+  _sleep(ms) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this._wake = null;
+        resolve();
+      }, ms);
+      this._wake = () => {
+        clearTimeout(timer);
+        resolve();
       };
+    });
+  }
+
+  /**
+   * 单会话串行分析。
+   *  - 轻量：movetime 模式（客户端 500ms 快查）
+   *  - 深度：go infinite -> 延迟 delay 毫秒 -> stop，一次收齐全 MultiPV 得分
+   * id 用于"最新请求取胜"：更新请求到达时打断旧搜索，旧任务短路返回 stale，
+   * 优先级低的排队任务在新请求到来前根本不落地到引擎。
+   */
+  analyze(fen, { multiPV = 5, movetime = 500, infinite = false, delay = 800 } = {}, id = 0) {
+    if (id > this.latest) this.latest = id;
+    if (this.searching) this.interrupt();
+
+    const job = async () => {
+      if (id !== this.latest) return { ok: false, stale: true };
+      const engine = await this.ensure();
+      if (id !== this.latest) return { ok: false, stale: true };
+      this.searching = true;
+      try {
+        const start = engine.lines.length;
+        engine.send(`setoption name MultiPV value ${capMultiPV(multiPV, fen)}`);
+        engine.setPositionFEN(fen);
+
+        if (infinite) {
+          engine.go(); // -> "go infinite"
+          await this._sleep(delay);
+          engine.send('stop');
+        } else {
+          engine.go({ movetime });
+        }
+
+        // 始终消费 bestmove 行：既能拿到结果，也能保证被打断的旧搜索清空缓存行，
+        // 不会把上一步的 bestmove 误配给下一个请求。
+        const bm = await engine.awaitBestmove(30000);
+        if (id !== this.latest) return { ok: false, stale: true };
+        if (!bm.bestmove) throw new Error('引擎未返回着法');
+
+        const lines = engine.lines.slice(start);
+        const { moves, score, wdl, depth } = summarize(lines);
+        return {
+          ok: true,
+          bestmove: bm.bestmove,
+          ponder: bm.ponder || null,
+          moves,
+          score,
+          wdl,
+          depth,
+        };
+      } finally {
+        this.searching = false;
+      }
     };
-    const job = this.queue.then(run).catch((err) => {
+
+    const task = this.queue.then(job).catch((err) => {
       this.dispose();
       throw err;
     });
-    this.queue = job.catch(() => {});
-    return job;
+    this.queue = task.catch(() => {});
+    return task;
   }
 
   dispose() {
@@ -120,12 +207,16 @@ export function pikafishPlugin(options = {}) {
     });
     req.on('end', async () => {
       try {
-        const { fen, multiPV = 6, movetime = 2500 } = JSON.parse(body || '{}');
+        const { fen, multiPV = 5, movetime = 500, infinite = false, delay = 800, id = 0 } = JSON.parse(body || '{}');
         if (!fen) {
           sendJson(res, 400, { ok: false, error: 'missing fen' });
           return;
         }
-        const r = await host.analyze(fen, Math.min(128, Math.max(1, multiPV)), movetime);
+        const r = await host.analyze(fen, { multiPV, movetime, infinite, delay }, id);
+        if (r.stale) {
+          sendJson(res, 200, { ok: false, stale: true });
+          return;
+        }
         sendJson(res, 200, {
           ok: true,
           fen,

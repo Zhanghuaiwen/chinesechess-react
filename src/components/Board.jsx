@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Cell from './Cell';
 import { findKing } from '../utils/gameLogic';
 import { sound } from '../utils/sound';
@@ -33,7 +33,7 @@ function boardDuringAnim(board, from, to, captured) {
   );
 }
 
-export default function Board({ board, selected, marks, check, lastMove, moveSeq, onCellClick }) {
+export default function Board({ board, selected, marks, check, lastMove, moveSeq, onCellClick, onAnimatingChange }) {
   const boardRef = useRef(null);
   const floatRef = useRef(null);
   const animBoardRef = useRef(board);
@@ -42,6 +42,11 @@ export default function Board({ board, selected, marks, check, lastMove, moveSeq
   const [animPiece, setAnimPiece] = useState(null);
   const [animPos, setAnimPos] = useState(null);
   const checkedPos = check ? findKing(board, check) : null;
+
+  // 向父级汇报棋子是否正在飞行动画中，用于网关"点击棋子看推荐着法"的触发条件
+  useEffect(() => {
+    if (onAnimatingChange) onAnimatingChange(!!animPiece);
+  }, [animPiece, onAnimatingChange]);
 
   useLayoutEffect(() => {
     if (moveSeq === 0 || !lastMove || !lastMove.piece) {
