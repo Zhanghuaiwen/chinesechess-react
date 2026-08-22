@@ -8,7 +8,8 @@ import {
   generateNotation,
   boardKey,
 } from '../utils/gameLogic';
-import { getAIMove } from '../services/aiService';
+import { getAIMove, DIFFICULTY } from '../services/aiService';
+import { engine } from '../engine/EngineController';
 import { sound } from '../utils/sound';
 import { MOVE_MS } from '../constants';
 
@@ -69,7 +70,7 @@ export default function useGame() {
   }, [started, gameOver, current, timeLimit, paused]);
 
   useEffect(() => {
-    if (gameOver) return;
+    if (gameOver || timeLimit <= 0) return; // 不限时：时钟显示 --:--，永不判超时
     const playerColor = aiColor === 'red' ? 'black' : 'red';
     const playerName = colorName(playerColor);
     if (redTime <= 0) {
@@ -83,7 +84,7 @@ export default function useGame() {
       setLog(aiColor === 'black' ? 'AI超时判负，你赢了！' : '黑方超时判负，红方胜利！');
       ('红方' === playerName ? sound.win : sound.lose)();
     }
-  }, [redTime, blackTime, gameOver, aiColor]);
+  }, [redTime, blackTime, gameOver, aiColor, timeLimit]);
 
   const doMove = useCallback((from, to) => {
     if (gameOver) return { gameOver: true };
@@ -234,6 +235,8 @@ export default function useGame() {
     }
     aiRef.current = false;
     versionRef.current++;
+    // 重新开局：作废在途引擎请求 + 清缓存态，回开局局面后由 App 触发分析（开局缓存瞬时返回）。
+    engine.resetForNewGame();
     setLog('点击"开始对局"按钮开始');
   }, [aiColor, timeLimit]);
 
@@ -338,7 +341,7 @@ export default function useGame() {
 
   const changeDifficulty = useCallback((d) => {
     setDifficulty(d);
-    setLog(`难度已切换至: ${d === 'easy' ? '简单' : d === 'medium' ? '中等' : '困难'}`);
+    setLog(`难度已切换至: ${(DIFFICULTY[d] || {}).label || d}`);
   }, []);
 
   const triggerAIMove = useCallback(() => {
@@ -347,11 +350,11 @@ export default function useGame() {
     setAiThinking(true);
     setLog('AI思考中...');
 
-    setTimeout(() => {
+    const run = async () => {
       const version = versionRef.current;
       try {
         if (overRef.current || pausedRef.current || versionRef.current !== version) return;
-        const result = getAIMove(board, difficulty, aiColor);
+        const result = await getAIMove(board, difficulty, aiColor);
         if (!result || !result.move) {
           setLog('AI无合法走法');
           return;
@@ -366,12 +369,17 @@ export default function useGame() {
           lastTimeMs: result.timeMs,
         }));
         if (overRef.current || versionRef.current !== version) return;
-        doMove(result.move.from, result.move.to);      } catch {
+        doMove(result.move.from, result.move.to);
+      } catch {
         setLog('AI走棋异常');
       } finally {
         setAiThinking(false);
         aiRef.current = false;
       }
+    };
+
+    setTimeout(() => {
+      run();
       // 等玩家棋子的滑动动画(MOVE_MS+30 提交落子)播完再让 AI 走子，
       // 避免 AI 过快响应导致玩家的动画被中断而"瞬移"
     }, MOVE_MS + 120);

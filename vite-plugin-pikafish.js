@@ -109,15 +109,27 @@ class EngineHost {
     }
   }
 
-  /** 可被 interrupt() 提前唤醒的延时（用于 go infinite -> stop 的收集窗口）。 */
-  _sleep(ms) {
+  /** 可被 interrupt() 提前唤醒的"条件等待"：
+   * 每 40ms 轮询一次 cond()，条件成立或超过 maxMs 即返回（比纯延时更能控制搜索深度）。 */
+  _until(cond, maxMs) {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this._wake = null;
-        resolve();
-      }, ms);
+      const start = Date.now();
+      const timer = setInterval(() => {
+        let done = false;
+        try {
+          done = cond();
+        } catch {
+          done = true;
+        }
+        if (done || Date.now() - start >= maxMs) {
+          clearInterval(timer);
+          this._wake = null;
+          resolve();
+        }
+      }, 40);
       this._wake = () => {
-        clearTimeout(timer);
+        clearInterval(timer);
+        this._wake = null;
         resolve();
       };
     });
@@ -126,11 +138,13 @@ class EngineHost {
   /**
    * 单会话串行分析。
    *  - 轻量：movetime 模式（客户端 500ms 快查）
-   *  - 深度：go infinite -> 延迟 delay 毫秒 -> stop，一次收齐全 MultiPV 得分
+   *  - 深度：go infinite -> 一直搜到主变深度达到 minDepth（或超过 delay 上限）-> stop，
+   *    一次收齐全 MultiPV 得分。minDepth 保证"深度到位"，delay 只是最坏情况护栏，
+   *    结果比固定延时更稳、更快。
    * id 用于"最新请求取胜"：更新请求到达时打断旧搜索，旧任务短路返回 stale，
    * 优先级低的排队任务在新请求到来前根本不落地到引擎。
    */
-  analyze(fen, { multiPV = 5, movetime = 500, infinite = false, delay = 800 } = {}, id = 0) {
+  analyze(fen, { multiPV = 5, movetime = 500, infinite = false, delay = 800, minDepth = 0 } = {}, id = 0) {
     if (id > this.latest) this.latest = id;
     if (this.searching) this.interrupt();
 
@@ -146,7 +160,15 @@ class EngineHost {
 
         if (infinite) {
           engine.go(); // -> "go infinite"
-          await this._sleep(delay);
+          let scan = start;
+          let topDepth = 0;
+          await this._until(() => {
+            while (scan < engine.lines.length) {
+              const p = parseInfoLine(engine.lines[scan++]);
+              if (p.multipv === 1 && p.depth) topDepth = Math.max(topDepth, p.depth);
+            }
+            return minDepth > 0 && topDepth >= minDepth;
+          }, delay);
           engine.send('stop');
         } else {
           engine.go({ movetime });
@@ -190,6 +212,25 @@ class EngineHost {
       this.engine = null;
     }
   }
+
+  /**
+   * 新开局专用：打断进行中的搜索并让引擎清空上一局的搜索记忆（ucinewgame）。
+   * 比"杀掉子进程重启"轻量得多：进程常驻、只需清哈希表，无需重新 spawn/UCI 握手。
+   * 走串行队列保证 ucinewgame 一定排在任何后续 go 之前，不会吞掉新搜索的应答。
+   */
+  async resetEngine() {
+    this.interrupt();
+    if (!this.engine) return;
+    const task = this.queue.then(() => {
+      if (!this.engine) return;
+      try {
+        this.engine.send('ucinewgame');
+        return this.engine.isReady();
+      } catch {}
+    });
+    this.queue = task.catch(() => {});
+    await this.queue;
+  }
 }
 
 export function pikafishPlugin(options = {}) {
@@ -207,12 +248,12 @@ export function pikafishPlugin(options = {}) {
     });
     req.on('end', async () => {
       try {
-        const { fen, multiPV = 5, movetime = 500, infinite = false, delay = 800, id = 0 } = JSON.parse(body || '{}');
+        const { fen, multiPV = 5, movetime = 500, infinite = false, delay = 800, minDepth = 0, id = 0 } = JSON.parse(body || '{}');
         if (!fen) {
           sendJson(res, 400, { ok: false, error: 'missing fen' });
           return;
         }
-        const r = await host.analyze(fen, { multiPV, movetime, infinite, delay }, id);
+        const r = await host.analyze(fen, { multiPV, movetime, infinite, delay, minDepth }, id);
         if (r.stale) {
           sendJson(res, 200, { ok: false, stale: true });
           return;
@@ -229,13 +270,34 @@ export function pikafishPlugin(options = {}) {
     });
   };
 
+  const resetHandler = async (req, res) => {
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'method not allowed' });
+      return;
+    }
+    try {
+      await host.resetEngine();
+      sendJson(res, 200, { ok: true });
+    } catch (e) {
+      sendJson(res, 200, { ok: false, error: String(e?.message || e) });
+    }
+  };
+
   return {
     name: 'pikafish',
     configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url && /\/__pikafish\/reset$/.test(req.url)) return resetHandler(req, res);
+        return next();
+      });
       server.middlewares.use(middleware);
       server.httpServer?.on('close', () => host.dispose());
     },
     configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url && /\/__pikafish\/reset$/.test(req.url)) return resetHandler(req, res);
+        return next();
+      });
       server.middlewares.use(middleware);
       server.httpServer?.on('close', () => host.dispose());
     },

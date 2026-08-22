@@ -10,8 +10,9 @@ import { uciToMove } from '../utils/fen';
 //    2. draw() 绘制层：把分级结果画到棋盘 Canvas 上，内含
 //       径向渐变"能量聚焦"、Top1 脉动动画（sin 缓动）。
 //
-//  分级阈值（相对 maxScore，即该棋子最佳着法得分）：
-//    good   ratio >= 0.40  -> 黄色系实心发光圆点，尺寸/透明度随强度线性放大（优等走法）
+//  分级阈值（相对强度 ratio，恒在 [0,1]，最佳走法恒为 1）：
+//    good   ratio >= 0.40  -> 黄色系实心发光圆点，尺寸/透明度随相对强度线性放大
+//                             （优等走法；局面整体不占优时仍至少保留榜首作为推荐）
 //    mark   ratio < 0.40   -> 绿色小圆点，回归"普通合法走法"的绿点样式（其余走法均可走）
 //  只有 1 个合法走法时：薄荷绿固定圆点，不做缩放对比。
 //  注：本版将 V2.0 的"半透明薄环/彻底隐藏"统一收敛为绿点 —— 用户更关心"哪里能走"，
@@ -38,23 +39,23 @@ const MAX_GOOD_PIXEL = 20;  // 最佳可达冲击力半径
 const PULSE_PERIOD_MS = 1500;
 const PULSE_AMPLITUDE = 0.15; // 1.0 -> 1.15 循环
 
-/** 引擎得分(可含 mate) -> 红方视角可比较数值。 */
-function redViewNum(score, sideToMove) {
+/** 引擎得分(可含 mate) -> 可排序数值，正=行棋方占优（指示器按"选中的棋子的行棋方"定优劣）。 */
+function scoreToNum(score) {
   if (!score) return 0;
-  let v;
-  if (score.type === 'mate') {
-    v = score.value > 0 ? 100000 : -100000;
-  } else {
-    v = score.value;
-  }
-  // 引擎分数以"行棋方"为正；应用里红方先手，黑方行棋时取反，保证"正=红优、负=黑优"。
-  return sideToMove === 'black' ? -v : v;
+  if (score.type === 'mate') return score.value > 0 ? 100000 : -100000;
+  return score.value;
 }
 
-/** 红方视角得分文本，供点击棋子的评级附注使用。 */
-export function redViewLabel(score, sideToMove) {
+/** 引擎得分(可含 mate) -> 指定展示视角(默认玩家执红)可比较数值。 */
+function viewNum(score, sideToMove, perspective = 'red') {
+  // 引擎分数以"行棋方"为正；换算到展示视角：行棋方==视角则同号，否则取反。正=视角方优。
+  return sideToMove === perspective ? scoreToNum(score) : -scoreToNum(score);
+}
+
+/** 视角得分文本，供点击棋子的评级附注使用。 */
+export function redViewLabel(score, sideToMove, perspective = 'red') {
   if (!score) return '—';
-  const v = redViewNum(score, sideToMove);
+  const v = viewNum(score, sideToMove, perspective);
   if (score.type === 'mate') return v > 0 ? `杀${score.value}` : `负${-score.value}`;
   return `${v >= 0 ? '+' : ''}${(v / 100).toFixed(2)}`;
 }
@@ -104,10 +105,12 @@ function cssColor([r, g, b]) {
  *   { kind:'moves', moves:[{ to, rank, num, ratio, isBest, isSingle, cls, alpha, shade, capture }] }
  * cls  ∈ 'good'（黄色发光圆点）| 'mark'（绿色小点）；isBest/isSingle 只会出现在 good 上。
  * alpha∈[0,1] 强度；shade=>[r,g,b] 已算好的渲染色矩阵，draw() 直接消费不再重复插值。
+ * 评分基准：引擎分恒以"行棋方"为正，而选中的棋子必属行棋方，因此强弱直接按
+ * scoreToNum（行棋方视角）排序，不再按展示视角翻转——否则黑方行棋（尤其人机对战时
+ * perspective 恒定 'red'）会把黑方最差的着法标成最佳，白送对手。
  */
 export function buildAndRate(data, board, selected) {
   if (!data || !selected || !Array.isArray(data.moves)) return null;
-  const side = data.sideToMove;
   const list = [];
   for (const m of data.moves) {
     if (!m.move) continue;
@@ -122,7 +125,8 @@ export function buildAndRate(data, board, selected) {
     list.push({
       to: mv.to,
       rank: m.rank,
-      num: redViewNum(m.score, side),
+      // 引擎分以"行棋方"为正；选中的棋子必属行棋方，直接按行棋方视角比较强弱。
+      num: scoreToNum(m.score),
       score: m.score,
       capture: !!target,
     });
@@ -148,14 +152,20 @@ export function buildAndRate(data, board, selected) {
         shade: MATTE_MINT,
       };
     }
-    const ratio = maxScore === 0 ? 1 : item.num / maxScore;
+    // 相对强度统一换算到 [0,1]：最优着法（列表第一）恒为 1 —— 当局势整体
+    // 不占优/被将杀时，榜首始终是"推荐下法"，用户一眼可知该往哪下；
+    // 其余着法按"与最优的分差"线性衰减，全程正数除法，杜绝全负数局面下
+    // ratio 溢出成数千倍、把更差的走法画成占屏巨点的事故。
+    //   maxScore>0 时数学上与旧的 num/maxScore 完全等价；
+    //   不占优局面示例(maxScore=-30, 其它=-50/-100000)
+    //   -> ratio: 1 / 0.33 / 0，榜首高亮、差距大的转绿。
+    const loss = maxScore - item.num;
+    const span = Math.max(1, Math.abs(maxScore));
+    const ratio = Math.max(0, Math.min(1, 1 - loss / span));
     if (ratio >= 0.4) {
-      // 优等走法：黄色系实心发光圆点，配色/透明度随分数（含 mate 特殊金色）
-      const { r, g, b, alpha } = getGradientColor(
-        mate ? { type: 'mate', value: 1 } : item.score,
-        maxScore,
-        ratio,
-      );
+      // 优等走法：黄色系实心发光圆点；杀棋(第X手杀, value>0)命中金色极值，
+      // 被杀的负 mate 走真实负分，绝不误用金色。
+      const { r, g, b, alpha } = getGradientColor(item.score, maxScore, ratio);
       return {
         to: item.to,
         rank: item.rank,
@@ -230,7 +240,10 @@ export function drawMoveIndicators(ctx, geo, selection, t) {
         : MIN_GOOD_PIXEL + (MAX_GOOD_PIXEL - MIN_GOOD_PIXEL) * mv.ratio;
       const scale =
         mv.isBest && !mv.isSingle ? (mv.ratio === 1 ? pulseScale : 1) : 1;
-      const R = Math.max(1, baseR * (mv.isBest ? scale : 1));
+      // 双保险：无论上游 ratio 出什么异常，圆点半径绝不超过半格宽，
+      // 杜绝"黄色圆圈占满整个屏幕"这类事故。
+      const maxR = Math.max(8, geo.cell * 0.5);
+      const R = Math.max(1, Math.min(baseR * (mv.isBest ? scale : 1), maxR));
       const [r0, g0, b0] = mv.shade;
 
       ctx.save();

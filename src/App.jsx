@@ -30,6 +30,32 @@ export default function App() {
   const heatRendererRef = useRef(null);
   const [scale, setScale] = useState(1);
 
+  // ── 移动端布局：窄屏竖屏时走纵向堆叠 + 面板 Tab，横屏矮窗仍用整体缩放 ──
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 900px)');
+    const update = () => setIsMobile(mq.matches && window.innerHeight > 520);
+    update();
+    if (mq.addEventListener) {
+      mq.addEventListener('change', update);
+      window.addEventListener('resize', update);
+      window.addEventListener('orientationchange', update);
+      return () => {
+        mq.removeEventListener('change', update);
+        window.removeEventListener('resize', update);
+        window.removeEventListener('orientationchange', update);
+      };
+    }
+    mq.addListener(update);
+    return () => mq.removeListener(update);
+  }, []);
+
+  // ── 移动端底部 Tab：棋谱 / 对局数据 / AI 分析 ──
+  const [mobileTab, setMobileTab] = useState('moves');
+  useEffect(() => {
+    if (!aiEnabled && mobileTab === 'stats') setMobileTab('moves');
+  }, [aiEnabled, mobileTab]);
+
   // ── 大师辅助状态 ──
   const [assistOn, setAssistOn] = useState(false);
   const [boardAnimating, setBoardAnimating] = useState(false);
@@ -74,13 +100,23 @@ export default function App() {
     // 分析进行中时旧数据与新棋盘不匹配，先不上屏，避免错误着色。
     const data = analysis.loading ? null : analysis.data;
 
+    // 展示视角：AI 先手(执红)时玩家执黑，棋盘热力/着法指示器跟随玩家，优着始终为暖色。
+    const perspective = aiEnabled && aiColor === 'red' ? 'black' : 'red';
+
     // 计算/绘制防御：任何异常都不得泄漏到 React 渲染树导致白屏。
     try {
-      const heat = assistOn && data ? UIManager.buildHeatCells(data, board) : { cells: [] };
+      // 皮卡鱼大师 AI 思考期间：清空棋盘上的热力/走法指示器覆盖层，
+      // 避免对手"边想边给提示"的怪异观感；落子后再恢复。
+      if (aiThinking && difficulty === 'pikafish') {
+        renderer.clear();
+        return;
+      }
+      const heat = assistOn && data ? UIManager.buildHeatCells(data, board, perspective) : { cells: [] };
       let selection = null;
       if (assistOn && !analysis.loading && !boardAnimating && selected) {
         // 任务G：走法"相对强度"指示器 —— 仅在大师辅助模式下启用，
         // 该模式下普通合法走法标记已由 marks=[] 屏蔽，完全由本渲染接管。
+        // 强弱按"行棋方视角"评级（选中的棋子必属行棋方），黑方行棋/人机对战也不会反转。
         selection = buildAndRate(data, board, selected);
       }
       renderer.setData({ isDeep: assistOn, cells: heat.cells, selection });
@@ -88,7 +124,7 @@ export default function App() {
       console.error('[heatmap] render pipeline error:', e);
       renderer.clear();
     }
-  }, [engineTick, assistOn, boardAnimating, selected, board]);
+  }, [engineTick, assistOn, boardAnimating, selected, board, aiEnabled, aiColor, aiThinking, difficulty]);
 
   const toggleAssist = useCallback(() => {
     if (assistOn) {
@@ -112,7 +148,7 @@ export default function App() {
 
   useLayoutEffect(() => {
     const el = layoutRef.current;
-    if (!el) return;
+    if (!el || isMobile) return;
     let raf;
     const compute = () => {
       cancelAnimationFrame(raf);
@@ -133,12 +169,18 @@ export default function App() {
       clearTimeout(t);
       window.removeEventListener('resize', compute);
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <div className="app-shell">
-      <div className="layout" ref={layoutRef} style={{ transform: `scale(${scale})` }}>
-        <MoveList moves={moves} activeIndex={history.length - 1} onReplayToMove={replayToMove} />
+      <div
+        className={`layout ${isMobile ? 'is-mobile' : ''}`}
+        ref={layoutRef}
+        style={isMobile ? undefined : { transform: `scale(${scale})` }}
+      >
+        <div className={`slot ${!isMobile || mobileTab === 'moves' ? 'slot-active' : ''}`}>
+          <MoveList moves={moves} activeIndex={history.length - 1} onReplayToMove={replayToMove} />
+        </div>
         <div className="container">
         <GameInfo
           current={current}
@@ -163,15 +205,6 @@ export default function App() {
           onToggleMute={toggleMute}
           onTogglePause={togglePause}
         />
-        <div className="assist-bar">
-          <button
-            className={UIManager.buttonClasses(assistOn)}
-            onClick={toggleAssist}
-            aria-pressed={assistOn}
-          >
-            🔍 大师辅助
-          </button>
-        </div>
         <div className="board-wrap">
           <Board
             board={board}
@@ -198,8 +231,49 @@ export default function App() {
           )}
         </div>
         </div>
-        {aiEnabled && <StatsPanel board={board} stats={aiStats} />}
-        <PikafishPanel board={board} current={current} />
+        <div className={`slot ${!isMobile || mobileTab === 'stats' ? 'slot-active' : ''}`}>
+          {aiEnabled && <StatsPanel board={board} stats={aiStats} />}
+        </div>
+        <div className={`slot ${!isMobile || mobileTab === 'ai' ? 'slot-active' : ''}`}>
+          <PikafishPanel
+            board={board}
+            current={current}
+            aiColor={aiColor}
+            aiEnabled={aiEnabled}
+            assistOn={assistOn}
+            onToggleAssist={toggleAssist}
+          />
+        </div>
+        {isMobile && (
+          <div className="mobile-dock" role="tablist" aria-label="面板切换">
+            <button
+              role="tab"
+              aria-selected={mobileTab === 'moves'}
+              className={mobileTab === 'moves' ? 'active' : ''}
+              onClick={() => setMobileTab('moves')}
+            >
+              棋谱
+            </button>
+            {aiEnabled && (
+              <button
+                role="tab"
+                aria-selected={mobileTab === 'stats'}
+                className={mobileTab === 'stats' ? 'active' : ''}
+                onClick={() => setMobileTab('stats')}
+              >
+                数据
+              </button>
+            )}
+            <button
+              role="tab"
+              aria-selected={mobileTab === 'ai'}
+              className={mobileTab === 'ai' ? 'active' : ''}
+              onClick={() => setMobileTab('ai')}
+            >
+              AI 分析
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

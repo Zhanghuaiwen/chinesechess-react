@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Cell from './Cell';
 import { findKing } from '../utils/gameLogic';
 import { sound } from '../utils/sound';
@@ -12,16 +12,40 @@ const RIVER_H = 36;
 const BOARD_W = 9 * CELL + 8 * GAP + 2 * PAD;
 const BOARD_H = 10 * CELL + 10 * GAP + RIVER_H + 2 * PAD;
 
-const colLeft = c => PAD + c * (CELL + GAP);
-const rowTop = r => (r <= 4
-  ? PAD + r * (CELL + GAP)
-  : PAD + 5 * CELL + 5 * GAP + RIVER_H + GAP + (r - 5) * (CELL + GAP));
+// 桌面端 CSS 默认值（56/2/12/36），首帧渲染与静态 viewBox 完全一致，无闪烁；
+// 移动端媒体查询改用小尺寸 --cell 后由 measureMetrics() 实测 DOM 重算 viewBox。
+function measureMetrics(el) {
+  const q = sel => el.querySelector(`.cell[data-pos="${sel}"]`);
+  const a = q('0-0');
+  const b = q('0-1');
+  const a1 = q('1-0');
+  const b5 = q('5-0');
+  if (!a || !b || !a1 || !b5) return null;
 
-const PALACE_W = 3 * CELL + 2 * GAP;
-const PALACES = [
-  { x: colLeft(3), y: rowTop(0), w: PALACE_W, h: PALACE_W },
-  { x: colLeft(3), y: rowTop(7), w: PALACE_W, h: PALACE_W },
-];
+  // 外层 .layout 可能带 transform:scale，getBoundingClientRect 是缩放后的值，
+  // 除以缩放系数还原为元素本地坐标，保证任意缩放下九宫线都对齐。
+  const rect = el.getBoundingClientRect();
+  const s = rect.width > 0 && el.clientWidth > 0 ? rect.width / el.clientWidth : 1;
+  const rel = node => {
+    const r = node.getBoundingClientRect();
+    return { x: (r.left - rect.left) / s, y: (r.top - rect.top) / s, w: r.width / s };
+  };
+
+  const A = rel(a);
+  const B = rel(b);
+  const A1 = rel(a1);
+  const B5 = rel(b5);
+  const cell = A.w;
+  const colStep = B.x - A.x;
+  const rowStep = A1.y - A.y;
+  const gap = Math.max(0, colStep - cell);
+  const riverH = Math.max(0, B5.y - A.y - 5 * rowStep - gap);
+  const w = A.x * 2 + 9 * colStep - gap;
+  // 高度 = 上下内边距 + 10 行(rowStep 已含行间隙) + 楚河汉界高
+  const h = A.y * 2 + 10 * rowStep + riverH;
+  if (!(cell > 0 && w > 0 && h > 0)) return null;
+  return { cell, colStep, rowStep, gap, riverH, pad: A.x, w, h };
+}
 
 function boardDuringAnim(board, from, to, captured) {
   return board.map((row, r) =>
@@ -41,7 +65,55 @@ export default function Board({ board, selected, marks, check, lastMove, moveSeq
   const [displayBoard, setDisplayBoard] = useState(board);
   const [animPiece, setAnimPiece] = useState(null);
   const [animPos, setAnimPos] = useState(null);
+  // 棋盘几何（本地坐标）：响应 CSS 变量/缩放变化，驱动九宫线 viewBox 精确重算
+  const [metrics, setMetrics] = useState(null);
   const checkedPos = check ? findKing(board, check) : null;
+
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return undefined;
+    let raf = 0;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const m = measureMetrics(el);
+        if (m) setMetrics(prev => (prev && Math.abs(prev.cell - m.cell) < 0.05 && Math.abs(prev.riverH - m.riverH) < 0.05 ? prev : m));
+      });
+    };
+    measure();
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
+    } else {
+      window.addEventListener('resize', measure);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      else window.removeEventListener('resize', measure);
+    };
+  }, []);
+
+  // 首帧回退到桌面静态值，measure 完成后（通常一帧内）无缝替换
+  const geo = useMemo(() => metrics || {
+    cell: CELL,
+    colStep: CELL + GAP,
+    rowStep: CELL + GAP,
+    gap: GAP,
+    riverH: RIVER_H,
+    pad: PAD,
+    w: BOARD_W,
+    h: BOARD_H,
+  }, [metrics]);
+
+  const palaces = useMemo(() => {
+    const w3 = 3 * geo.colStep - geo.gap;
+    return [
+      { x: geo.pad + 3 * geo.colStep, y: geo.pad, w: w3, h: w3 },
+      { x: geo.pad + 3 * geo.colStep, y: geo.pad + 7 * geo.rowStep + geo.riverH + geo.gap, w: w3, h: w3 },
+    ];
+  }, [geo]);
 
   // 向父级汇报棋子是否正在飞行动画中，用于网关"点击棋子看推荐着法"的触发条件
   useEffect(() => {
@@ -146,9 +218,9 @@ export default function Board({ board, selected, marks, check, lastMove, moveSeq
         <span className="river-text">汉界</span>
       </div>
       {displayBoard.slice(5).map((row, r) => row.map((piece, c) => renderCell(r + 5, c, piece)))}
-      <svg className="board-lines" viewBox={`0 0 ${BOARD_W} ${BOARD_H}`}>
-        {PALACES.map((p, i) => {
-          const cx = CELL / 2;
+      <svg className="board-lines" viewBox={`0 0 ${geo.w} ${geo.h}`}>
+        {palaces.map((p, i) => {
+          const cx = geo.cell / 2;
           return (
             <g key={i}>
               <rect x={p.x} y={p.y} width={p.w} height={p.h} className="palace-line" />

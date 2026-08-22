@@ -11,13 +11,40 @@ export function scoreToNum(score) {
   return score.value;
 }
 
-/** 展示文本：+1.25 / -0.75 / 杀2 / 负2（红方视角，黑方行棋时自动取反）。 */
-export function scoreLabel(score, sideToMove) {
+/** 展示文本：+1.25 / -0.75 / 杀2 / 负2。默认红方视角，黑方行棋时取反；perspective 指定展示给谁看（默认'red'，AI先手时玩家是黑方则传'black'）。 */
+export function scoreLabel(score, sideToMove, perspective = 'red') {
   if (!score) return '—';
-  const red = sideToMove === 'black' ? -scoreToNum(score) : scoreToNum(score);
-  if (score.type === 'mate') return red > 0 ? `杀${score.value}` : `负${-score.value}`;
-  const v = red / 100;
+  const view = sideToMove === perspective ? scoreToNum(score) : -scoreToNum(score);
+  if (score.type === 'mate') return view > 0 ? `杀${score.value}` : `负${-score.value}`;
+  const v = view / 100;
   return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
+}
+
+// ─────────────────────────── 分数配色（红正蓝负） ───────────────────────────
+
+const SCORE_RED_LIGHT = '#e0705b';   // 小正分：偏浅的红
+const SCORE_RED_DEEP = '#7a1208';    // 大正分：深红
+const SCORE_BLUE_LIGHT = '#5f93bd';  // 小负分：偏浅的蓝
+const SCORE_BLUE_DEEP = '#0f3a5c';   // 大负分：深蓝
+const SCORE_NEUTRAL = '#8a6d4f';
+
+function mixHex(a, b, t) {
+  const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
+  const pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
+  const ch = (i) => Math.round(pa[i] + (pb[i] - pa[i]) * t).toString(16).padStart(2, '0');
+  return `#${ch(0)}${ch(1)}${ch(2)}`;
+}
+
+/**
+ * 分数(厘兵，玩家视角) -> 文本色。规则固定：正分一律红色、加的越多越深；
+ * 负分一律蓝色、扣的越多越深；≈0 用中性色。杀棋按 ±100000 直接落深端。
+ */
+export function scoreColor(view) {
+  if (!view) return SCORE_NEUTRAL;
+  const t = Math.min(1, Math.abs(view) / 900); // 900 ≈ 一车，之后饱和到最深
+  return view > 0
+    ? mixHex(SCORE_RED_LIGHT, SCORE_RED_DEEP, t)
+    : mixHex(SCORE_BLUE_LIGHT, SCORE_BLUE_DEEP, t);
 }
 
 /**
@@ -44,8 +71,9 @@ export class UIManager {
    *   key = "r,c" -> { best, moves }
    *   best  = 该格排名最靠前(rank 最小)的着法
    *   moves = 该格全部着法（含是否吃子，用于点击棋子指示器）
+   * perspective 为展示视角（AI先手时玩家执黑传 'black'），让玩家自己的优着为正值(暖色)。
    */
-  static buildPieceMap(data, board) {
+  static buildPieceMap(data, board, perspective = 'red') {
     const map = new Map();
     if (!data || !Array.isArray(data.moves)) return map;
     const side = data.sideToMove;
@@ -60,8 +88,8 @@ export class UIManager {
       }
       const key = `${mv.from.r},${mv.from.c}`;
       const target = board && board[mv.to.r] ? board[mv.to.r][mv.to.c] : null;
-      // num 统一到红方视角：引擎分数以"行棋方"为正，黑方行棋时取反。
-      const num = side === 'black' ? -scoreToNum(m.score) : scoreToNum(m.score);
+      // 引擎分以"行棋方"为正；换算到展示视角：行棋方==视角则同号，否则取反。
+      const num = perspective === side ? scoreToNum(m.score) : -scoreToNum(m.score);
       const item = { to: mv.to, capture: !!target, num, score: m.score, rank: m.rank };
 
       const entry = map.get(key);
@@ -84,14 +112,14 @@ export class UIManager {
    * 热力图数据：每个有走法的棋子格子取其"最优着法得分"。
    * 强度不做数值归一，而是**按相对排名**：把正分格子一套、负分格子一套，
    * 组内按 |分| 从高到低排序，名次越靠前越浓、越靠后越淡。
-   * 这样红色那侧不会再因为分差普遍偏小而整体发白，蓝色也不会因为个别大分值
+   * 这样视角方那侧不会再因为分差普遍偏小而整体发白，对手也不会因为个别大分值
    * 而一片死深 —— 两色的深浅始终对称。0 分格子直接剔除（保持透明）。
    * 返回 { cells: [{r, c, value, t}] }，t∈[0,1] 为组内名次强度。
    */
-  static buildHeatCells(data, board) {
+  static buildHeatCells(data, board, perspective = 'red') {
     const raw = [];
     if (data) {
-      const map = this.buildPieceMap(data, board);
+      const map = this.buildPieceMap(data, board, perspective);
       for (const [key, entry] of map) {
         const [r, c] = key.split(',').map(Number);
         const value = entry.best.num;
@@ -114,8 +142,9 @@ export class UIManager {
   /**
    * 侧边栏走法列表：按引擎 rank（即得分从高到低）排序。
    * limit 用于标准模式只取前 N 路；深度模式传 Infinity 展示全部。
+   * perspective 决定分数/着法着色展示给谁（默认红方；AI先手时玩家执黑传 'black'）。
    */
-  static buildSidebarRows(data, board, sideToMove, limit = 5) {
+  static buildSidebarRows(data, board, sideToMove, limit = 5, perspective = 'red') {
     const rows = [];
     if (!data || !Array.isArray(data.moves)) return rows;
 
@@ -134,12 +163,14 @@ export class UIManager {
       } catch {
         /* UCI 原文兜底 */
       }
-      const num = sideToMove === 'black' ? -scoreToNum(m.score) : scoreToNum(m.score);
+      // 引擎分以"行棋方"为正；换算到玩家视角：行棋方==玩家则同号，否则取反。
+      const num = perspective === sideToMove ? scoreToNum(m.score) : -scoreToNum(m.score);
       rows.push({
         rank: m.rank,
         notation,
-        text: scoreLabel(m.score, sideToMove),
-        tone: num > 0 ? 'pos' : num < 0 ? 'neg' : 'eq',
+        text: scoreLabel(m.score, sideToMove, perspective),
+        num,
+        color: scoreColor(num),
         capture: !!(board && board[mv.to.r] && board[mv.to.r][mv.to.c]),
       });
     }
@@ -148,7 +179,7 @@ export class UIManager {
 
   /**
    * 点击棋子的着法指示器数据 —— V2.0 全部托管给 MoveIndicatorRenderer.buildAndRate：
-   * 废除以"吃子/非吃子"分类的旧渲染，改按红方视角得分的相对强度分级
+   * 废除以"吃子/非吃子"分类的旧渲染，改按行棋方视角得分的相对强度分级
    * （优等实心发光圆点/中等薄环/平庸隐藏）+ Top1 脉动（在绘制层兑现）。
    */
   static buildPieceSelection(data, board, selected) {

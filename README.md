@@ -121,11 +121,12 @@ score = Σ(红方棋子价值) - Σ(黑方棋子价值)
 
 ## 难度系统
 
-| 难度 | 搜索深度 | 策略说明                                 |
-| ---- | ------- | ---------------------------------------- |
-| 简单 | 2       | 仅考虑 2 步以内的走法，较弱但响应极快       |
-| 中等 | 3       | 默认设置，平衡强度与速度                    |
-| 困难 | 4       | 使用迭代加深（ID），最多 8 秒时间预算       |
+| 难度       | 搜索深度 | 策略说明                              |
+| ---------- | ------- | ------------------------------------- |
+| 简单       | 3       | 仅考虑 3 步以内的走法，较弱但响应极快    |
+| 中等       | 4       | 默认设置，平衡强度与速度               |
+| 困难       | 5       | 使用迭代加深（ID），最多 8 秒时间预算    |
+| 皮卡鱼大师 | 引擎    | 走棋交给本地 Pikafish 引擎（思考 2 秒） |
 
 **困难模式的迭代加深** (Iterative Deepening)：
 
@@ -140,6 +141,8 @@ function iterativeDeepening(board, maxDepth, timeBudget, isMaximizing):
 ```
 
 `getAIMove(board, difficulty, aiColor)` 支持 AI 执红或执黑：AI 执红走 Maximizer（`isMaximizing = true`），执黑走 Minimizer。
+当难度为 `pikafish`（皮卡鱼大师）时，走棋改为请求 `/__pikafish/analyze`（`multiPV=1, movetime=2000`），
+与右侧分析面板共用单调 id，引擎不可用时自动降级为本地困难 AI。
 
 从 depth=1 开始逐层加深，每层完成后检查时间预算。若超时，返回上一层已完整搜索的最佳走法，保证在最坏情况下也有合理走法返回。
 
@@ -189,7 +192,9 @@ Vite 开发服务器
 ```
 
 - **棋盘 → FEN**：`src/utils/fen.js` 的 `boardToFEN`（UCI rank = 9 − row、file = col；红方大写 R N B A K C P，黑方小写）
-- **请求策略**：每次走子（`board`/`current` 变化）防抖 500ms 触发一次分析，思考 2 秒、`MultiPV=5`
+- **请求策略**：每次走子（`board`/`current` 变化）防抖 500ms 触发一次分析，轻量 500ms / Master 深度搜索至主变深度 10（`minDepth`），最晚 4 秒兜底
+- **大师深度**：`go infinite` 后轮询主变深度，达到 `minDepth` 立即 `stop`，比固定延时更深、结果更收敛
+- **开局缓存 + 重开**：标准开局局面的分析结果被缓存，重新开局时面板瞬时复用（不再"重开要分析老半天"），且大师模式开局推荐在每盘间保持一致；新开局还会通知引擎 `ucinewgame` 清空上一局搜索记忆（常驻进程不重启）
 - **仅开发/预览可用**：`npm run dev` / `npm run preview` 中间件生效；纯静态 `dist/` 无此接口
 - **引擎前提**：`Pikafish-master/release/` 下须存在 `Pikafish.exe` 与 `pikafish.nnue`（NNUE 权重与 exe 同目录），否则面板显示"引擎未连接"
 

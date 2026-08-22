@@ -101,12 +101,16 @@
 }
 
 #board {
+  --cell: 56px;
+  --gap: 2px;
+  --pad: 12px;
+  --river-h: 36px;
   display: grid;
-  grid-template-columns: repeat(9, 56px);
-  grid-template-rows: repeat(5, 56px) 36px repeat(5, 56px);
-  gap: 2px;
+  grid-template-columns: repeat(9, var(--cell));
+  grid-template-rows: repeat(5, var(--cell)) var(--river-h) repeat(5, var(--cell));
+  gap: var(--gap);
   background: #eaceb0;
-  padding: 12px;
+  padding: var(--pad);
   border-radius: 28px;
   position: relative;
   box-shadow:
@@ -128,6 +132,7 @@
   fill: none;
   stroke: #8a6d4f;
   stroke-width: 2;
+  stroke-linecap: square;
   opacity: 0.8;
 }
 
@@ -142,7 +147,7 @@
 }
 
 .river-text {
-  font-size: 22px;
+  font-size: calc(var(--cell, 56px) * 0.4);
   font-weight: bold;
   letter-spacing: 6px;
   color: #a9825b;
@@ -164,7 +169,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36px;
+  font-size: calc(var(--cell, 56px) * 0.64);
   font-weight: 700;
   box-shadow:
     inset 0 0 0 1px #c8b294,
@@ -190,9 +195,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36px;
+  font-size: calc(var(--cell, 56px) * 0.64);
   font-weight: 700;
   cursor: pointer;
+  touch-action: manipulation;
   transition:
     background 0.15s,
     transform 0.1s;
@@ -241,7 +247,7 @@
 
 .cell.mark::after {
   content: "\2022";
-  font-size: 42px;
+  font-size: calc(var(--cell, 56px) * 0.75);
   color: #27ae60;
   position: absolute;
   opacity: 0.7;
@@ -415,7 +421,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-width: 320px;
+  width: min(360px, calc(100vw - 24px));
   animation: panel-in 0.2s ease-out;
 }
 
@@ -645,6 +651,30 @@
   cursor: default;
 }
 
+.save-btn {
+  margin-top: 10px;
+  padding: 8px 0;
+  width: 100%;
+  background: #8a5a2b;
+  border: 1px solid #6f471f;
+  color: #f5e8d8;
+  font-size: 15px;
+  font-weight: bold;
+  border-radius: 10px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: 0.1s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #6f471f;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .difficulty-label {
   font-size: 15px;
   font-weight: bold;
@@ -653,6 +683,7 @@
 
 .difficulty-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -787,7 +818,7 @@
   border: 1px solid #b89b7a;
 }
 
-.pf-bar-red {
+.pf-bar-player {
   background: #c0392b;
 }
 
@@ -795,8 +826,8 @@
   background: #e0b64d;
 }
 
-.pf-bar-black {
-  background: #3a3a3a;
+.pf-bar-ai {
+  background: #21618c;
 }
 
 .pf-bar-legend {
@@ -807,7 +838,8 @@
   font-family: "Consolas", "Courier New", monospace;
 }
 
-.pf-red {
+/* 胜率图例：固定"你=红 / 和=黄 / AI=蓝"，AI 先手(玩家执黑)时你的胜率也是红 */
+.pf-player {
   color: #c0392b;
   font-weight: bold;
 }
@@ -816,8 +848,8 @@
   color: #8a6d4f;
 }
 
-.pf-black {
-  color: #3a3a3a;
+.pf-ai {
+  color: #21618c;
   font-weight: bold;
 }
 
@@ -827,20 +859,8 @@
   font-family: "Consolas", "Courier New", monospace;
 }
 
-.pf-good {
-  color: #c0392b;
-}
-
-.pf-bad {
-  color: #1a1a1a;
-}
-
-.pf-eq {
-  color: #8a6d4f;
-}
-
+/* 杀棋文本较长，字号缩小；颜色由 scoreColor(红正蓝负) 内联控制 */
 .pf-score-mate {
-  color: #8e44ad;
   font-size: 16px;
 }
 
@@ -922,19 +942,12 @@
   pointer-events: none;
 }
 
-/* 棋盘上方的辅助栏：按钮以"普通排版"形式存在，绝不遮住棋盘 */
-.assist-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin: 0 0 8px;
-}
-
-/* 科技感切换按钮 */
+/* 侧边栏模式切换按钮（位于 Pikafish 面板标题右侧） */
 .master-btn {
-  padding: 6px 16px;
-  border-radius: 30px;
+  padding: 3px 12px;
+  border-radius: 20px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1px;
   color: #f5e8d8;
@@ -944,6 +957,7 @@
     0 3px 8px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transition: all 0.22s ease;
+  flex-shrink: 0;
 }
 
 .master-btn:hover {
@@ -972,35 +986,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
-.pf-mode {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 10px;
-  border-radius: 20px;
-  letter-spacing: 1px;
-  background: #d9c8a9;
-  color: #6f4f37;
-}
-
-.pf-mode.deep {
-  background: #f1c40f;
-  color: #3d2b1a;
-  box-shadow: 0 0 8px rgba(241, 196, 15, 0.6);
-}
-
-/* 走法得分着色：正分红 +xxx，负分蓝 -xxx */
-.pf-move-score.pf-pos {
-  color: #c0392b;
-}
-
-.pf-move-score.pf-neg {
-  color: #21618c;
-}
-
-.pf-move-score.pf-eq {
-  color: #8a6d4f;
+.pf-title {
+  font-weight: bold;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
 /* 深度模式：全量着法列表可滚动 */
@@ -1010,3 +1002,228 @@
   scrollbar-width: thin;
   scrollbar-color: #b89b7a transparent;
 }
+
+/* ─────────────────────────── 移动端适配 ─────────────────────────── */
+
+/* 桌面端：槽位透明化，面板作为 .layout 的直接 flex 子项，保持原有布局 */
+.slot {
+  display: contents;
+}
+
+/* 移动端底部面板切换栏（桌面隐藏） */
+.mobile-dock {
+  display: none;
+}
+
+/* 与 App.jsx 的 isMobile 判定保持一致：窄屏且非横屏矮窗；
+   横屏矮窗（如手机横持）回退到桌面整体缩放模式 */
+@media (max-width: 900px) and (min-height: 521px) {
+  /* 页面骨架：允许纵向滚动，适配刘海屏安全区 */
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    align-items: flex-start;
+    padding: calc(8px + env(safe-area-inset-top)) 8px
+      calc(12px + env(safe-area-inset-bottom));
+    touch-action: pan-y;
+  }
+
+  .layout.is-mobile {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+    transform: none !important;
+    /* 避让固定在底部的 Tab 栏 */
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  /* 槽位在移动端恢复为普通块级元素，由 active 类控制显隐 */
+  .layout.is-mobile .slot {
+    display: none;
+    order: 5;
+    min-width: 0;
+  }
+
+  .layout.is-mobile .slot.slot-active {
+    display: block;
+  }
+
+  .layout.is-mobile > .container {
+    order: 0;
+    min-width: 0;
+  }
+
+  .layout.is-mobile > .mobile-dock {
+    order: 4;
+  }
+
+  /* 底部 Tab 栏：通栏固定在屏幕底部的单行长条 */
+  .mobile-dock {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 6px max(10px, env(safe-area-inset-left))
+      calc(6px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+    background: #eddecb;
+    border-top: 2px solid #b89b7a;
+    box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.25);
+  }
+
+  .mobile-dock button {
+    flex: 1 1 0;
+    min-width: 0;
+    background: none;
+    border: none;
+    color: #6f4f37;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    padding: 12px 0;
+    min-height: 48px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.15s;
+    touch-action: manipulation;
+  }
+
+  .mobile-dock button.active {
+    background: #5a3e2b;
+    color: #f5e8d8;
+  }
+
+  /* 棋盘随屏宽自适应：页面边距16 + 容器边框12 + 容器内边距28 + 棋盘内边距20 + 列间隙16 = 92px */
+  #board {
+    --cell: clamp(28px, calc((100vw - 92px) / 9), 56px);
+    --pad: 10px;
+    --river-h: clamp(18px, calc((100vw - 92px) / 14), 36px);
+  }
+
+  .container {
+    padding: 12px 14px 16px;
+    border-radius: 24px 24px 20px 20px;
+    border-width: 6px;
+  }
+
+  .header {
+    font-size: 17px;
+    margin-bottom: 10px;
+    padding: 6px 12px;
+  }
+
+  .turn-label {
+    font-size: 17px;
+    padding: 2px 14px;
+    letter-spacing: 1px;
+  }
+
+  .thinking-text {
+    font-size: 12px;
+  }
+
+  .check-badge {
+    font-size: 13px;
+    padding: 2px 10px;
+  }
+
+  .game-over {
+    font-size: 16px;
+    padding: 6px 14px;
+    margin-bottom: 6px;
+  }
+
+  .clock-row {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .clock {
+    font-size: 13px;
+    padding: 3px 12px;
+    gap: 6px;
+  }
+
+  .clock-time {
+    font-size: 15px;
+  }
+
+  .controls {
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .controls button {
+    font-size: 15px;
+    padding: 8px 16px;
+    min-height: 40px;
+    letter-spacing: 0.5px;
+  }
+
+  #log {
+    margin-top: 8px;
+    font-size: 13px;
+    min-height: 28px;
+    padding: 3px 12px;
+    line-height: 1.5;
+  }
+
+  .river {
+    padding: 0 calc(var(--cell) * 1.5);
+  }
+
+  /* 覆盖层文字按棋盘比例缩放 */
+  .board-overlay-text {
+    font-size: 17px;
+    letter-spacing: 4px;
+  }
+
+  .readygo-text {
+    font-size: 44px;
+    letter-spacing: 6px;
+  }
+
+  .readygo-text.go {
+    font-size: 58px;
+  }
+
+  .start-btn {
+    font-size: 18px;
+    padding: 10px 32px;
+  }
+
+  /* 面板在移动端铺满整行、限制高度 */
+  .move-list {
+    width: 100%;
+    height: auto;
+    max-height: 46vh;
+    padding: 10px 12px;
+  }
+
+  .move-list-rows {
+    max-height: 30vh;
+  }
+
+  .stats-panel,
+  .pikafish-panel {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .pf-moves-deep {
+    max-height: 34vh;
+  }
+
+  /* 设置弹窗贴合并留出安全区 */
+  .settings-overlay {
+    padding: 12px;
+  }
+}
+
