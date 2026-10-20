@@ -191,7 +191,7 @@ Vite 开发服务器
  └─ src/components/PikafishPanel.jsx  ──fetch──> 渲染胜率条 / 局面分 / 主要着法
 ```
 
-- **棋盘 → FEN**：`src/utils/fen.js` 的 `boardToFEN`（UCI rank = 9 − row、file = col；红方大写 R N B A K C P，黑方小写）
+- **棋盘 → FEN**：`shared/fen.js` 的 `boardToFEN`（UCI rank = 9 − row、file = col；红方大写 R N B A K C P，黑方小写）
 - **请求策略**：每次走子（`board`/`current` 变化）防抖 500ms 触发一次分析，轻量 500ms / Master 深度搜索至主变深度 10（`minDepth`），最晚 4 秒兜底
 - **大师深度**：`go infinite` 后轮询主变深度，达到 `minDepth` 立即 `stop`，比固定延时更深、结果更收敛
 - **开局缓存 + 重开**：标准开局局面的分析结果被缓存，重新开局时面板瞬时复用（不再"重开要分析老半天"），且大师模式开局推荐在每盘间保持一致；新开局还会通知引擎 `ucinewgame` 清空上一局搜索记忆（常驻进程不重启）
@@ -356,7 +356,7 @@ export const MoveIndicatorRenderer = { draw }
 
 ## 游戏规则实现
 
-所有规则在 `src/utils/gameLogic.js` 中实现：
+所有规则在 `shared/gameLogic.js` 中实现（前后端同构，服务端权威校验复用同一份代码）：
 
 - **车 (Rook)**：直线滑动，遇子停止
 - **马 (Knight)**：日字走法，蹩马腿检测

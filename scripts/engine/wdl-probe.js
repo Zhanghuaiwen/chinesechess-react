@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { PikafishClient } from './pikafish-client.js';
-import { boardToFEN } from '../../src/utils/fen.js';
-import { initBoard } from '../../src/utils/gameLogic.js';
+import { boardToFEN } from '../../shared/fen.js';
+import { initBoard } from '../../shared/gameLogic.js';
 
 const RELEASE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'Pikafish-master', 'release');
 

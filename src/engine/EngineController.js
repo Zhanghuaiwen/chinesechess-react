@@ -1,4 +1,4 @@
-import { startFEN } from '../utils/fen';
+import { startFEN } from '../../shared/fen';
 
 const ANALYZE_URL = '/__pikafish/analyze';
 const RESET_URL = '/__pikafish/reset';
@@ -65,10 +65,6 @@ export class EngineController {
 
   getState() {
     return this.state;
-  }
-
-  isDeepMode() {
-    return this.state.mode === 'deep';
   }
 
   _emit() {

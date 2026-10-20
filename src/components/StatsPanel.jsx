@@ -1,4 +1,4 @@
-import { evaluateBoard } from "../utils/gameLogic";
+import { evaluateBoard } from "../../shared/gameLogic";
 
 export default function StatsPanel({ board, stats }) {
   const evalScore = evaluateBoard(board);

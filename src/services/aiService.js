@@ -1,5 +1,5 @@
-import { getAllLegalMoves, makeMove, evaluateBoard } from '../utils/gameLogic';
-import { boardToFEN, uciToMove } from '../utils/fen';
+import { getAllLegalMoves, makeMove, evaluateBoard } from '../../shared/gameLogic';
+import { boardToFEN, uciToMove } from '../../shared/fen';
 import { nextRequestId } from '../engine/EngineController';
 
 export const DIFFICULTY = {

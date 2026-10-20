@@ -6,12 +6,12 @@ import {
   fenToBoard,
   moveToUCI,
   uciToMove,
-} from '../../src/utils/fen.js';
+} from '../../shared/fen.js';
 import {
   initBoard,
   makeMove,
   getSafeMoves,
-} from '../../src/utils/gameLogic.js';
+} from '../../shared/gameLogic.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RELEASE = join(__dirname, '..', '..', 'Pikafish-master', 'release');

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Cell from './Cell';
-import { findKing } from '../utils/gameLogic';
+import { findKing } from '../../shared/gameLogic';
 import { sound } from '../utils/sound';
 import { MOVE_MS } from '../constants';
 

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { PikafishClient } from './pikafish-client.js';
-import { uciToMove } from '../../src/utils/fen.js';
+import { uciToMove } from '../../shared/fen.js';
 
 const RELEASE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'Pikafish-master', 'release');
 

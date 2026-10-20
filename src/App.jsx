@@ -5,11 +5,13 @@ import GameInfo from './components/GameInfo';
 import StatsPanel from './components/StatsPanel';
 import MoveList from './components/MoveList';
 import PikafishPanel from './components/PikafishPanel';
+import OnlineGame from './components/OnlineGame';
+import PwaControls from './components/PwaControls';
 import { engine } from './engine/EngineController';
 import { HeatmapRenderer } from './engine/HeatmapRenderer';
 import { buildAndRate } from './engine/MoveIndicatorRenderer';
 import { UIManager } from './engine/UIManager';
-import { boardToFEN } from './utils/fen';
+import { boardToFEN } from '../shared/fen';
 import './App.css';
 
 export default function App() {
@@ -29,6 +31,8 @@ export default function App() {
   const heatCanvasRef = useRef(null);
   const heatRendererRef = useRef(null);
   const [scale, setScale] = useState(1);
+  // 模式：单机（本地 AI 对战） / 联机（服务端权威对战）
+  const [mode, setMode] = useState('local');
 
   // ── 移动端布局：窄屏竖屏时走纵向堆叠 + 面板 Tab，横屏矮窗仍用整体缩放 ──
   const [isMobile, setIsMobile] = useState(false);
@@ -173,6 +177,16 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <PwaControls />
+      <button
+        className="mode-switch"
+        onClick={() => setMode((m) => (m === 'local' ? 'online' : 'local'))}
+      >
+        {mode === 'local' ? '联机对战' : '单机对战'}
+      </button>
+      {mode === 'online' ? (
+        <OnlineGame onExit={() => setMode('local')} />
+      ) : (
       <div
         className={`layout ${isMobile ? 'is-mobile' : ''}`}
         ref={layoutRef}
@@ -275,6 +289,7 @@ export default function App() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

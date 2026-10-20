@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { PikafishClient } from './scripts/engine/pikafish-client.js';
-import { fenToBoard } from './src/utils/fen.js';
-import { getAllLegalMoves } from './src/utils/gameLogic.js';
+import { fenToBoard } from './shared/fen.js';
+import { getAllLegalMoves } from './shared/gameLogic.js';
 
 const RELEASE = join(dirname(fileURLToPath(import.meta.url)), 'Pikafish-master', 'release');
 const EXE = join(RELEASE, 'Pikafish.exe');

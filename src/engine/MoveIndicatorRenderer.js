@@ -1,4 +1,4 @@
-import { uciToMove } from '../utils/fen';
+import { uciToMove } from '../../shared/fen';
 
 // ──────────────────────────────────────────────────────────────────
 //  MoveIndicatorRenderer —— 基于得分的走法指示器（V2.0）
@@ -44,20 +44,6 @@ function scoreToNum(score) {
   if (!score) return 0;
   if (score.type === 'mate') return score.value > 0 ? 100000 : -100000;
   return score.value;
-}
-
-/** 引擎得分(可含 mate) -> 指定展示视角(默认玩家执红)可比较数值。 */
-function viewNum(score, sideToMove, perspective = 'red') {
-  // 引擎分数以"行棋方"为正；换算到展示视角：行棋方==视角则同号，否则取反。正=视角方优。
-  return sideToMove === perspective ? scoreToNum(score) : -scoreToNum(score);
-}
-
-/** 视角得分文本，供点击棋子的评级附注使用。 */
-export function redViewLabel(score, sideToMove, perspective = 'red') {
-  if (!score) return '—';
-  const v = viewNum(score, sideToMove, perspective);
-  if (score.type === 'mate') return v > 0 ? `杀${score.value}` : `负${-score.value}`;
-  return `${v >= 0 ? '+' : ''}${(v / 100).toFixed(2)}`;
 }
 
 function mix(a, b, t) {

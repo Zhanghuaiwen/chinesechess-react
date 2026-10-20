@@ -7,7 +7,7 @@ import {
   hasLegalMove,
   generateNotation,
   boardKey,
-} from '../utils/gameLogic';
+} from '../../shared/gameLogic';
 import { getAIMove, DIFFICULTY } from '../services/aiService';
 import { engine } from '../engine/EngineController';
 import { sound } from '../utils/sound';
@@ -211,7 +211,8 @@ export default function useGame() {
     const tl = opts.timeLimit !== undefined ? opts.timeLimit : timeLimit;
     setAiColor(aiC);
     setTimeLimit(tl);
-    setBoard(initBoard());
+    const freshBoard = initBoard();
+    setBoard(freshBoard);
     setCurrent('red');
     setSelected(null);
     setMarks([]);
@@ -221,7 +222,8 @@ export default function useGame() {
     setMoves([]);
     setCheck(null);
     setLastMove(null);
-    setRepetitions({});
+    // 初始局面也要计入重复计数（与服务端 Game 构造一致），否则回到初始局面时判和会晚一次
+    setRepetitions({ [boardKey(freshBoard, 'red')]: 1 });
     setRedTime(tl > 0 ? tl * 60 : 0);
     setBlackTime(tl > 0 ? tl * 60 : 0);
     setAiStats(ZERO_STATS);

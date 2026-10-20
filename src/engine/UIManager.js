@@ -1,6 +1,5 @@
-import { uciToMove } from '../utils/fen';
-import { generateNotation } from '../utils/gameLogic';
-import { buildAndRate } from './MoveIndicatorRenderer';
+import { uciToMove } from '../../shared/fen';
+import { generateNotation } from '../../shared/gameLogic';
 
 // ─────────────────────────────── 分数工具 ───────────────────────────────
 
@@ -52,18 +51,12 @@ export function scoreColor(view) {
  * 负责从引擎 MultiPV 全量结果里构建：
  *   1. 侧边栏走法列表（红方视角得分从高到低，正分红色 +xxx / 负分蓝色 -xxx）
  *   2. 热力图逐格数据（每格取该子最优着法在红方视角下的得分）
- *   3. 点击棋子的着法指示器（V2.0 委托 MoveIndicatorRenderer 做相对强度分级）
- *   4. 大师辅助按钮的状态类名
+ *   3. 大师辅助按钮的状态类名
  */
 export class UIManager {
   /** 按钮状态：依据是否深度开启返回 className。 */
   static buttonClasses(deep) {
     return deep ? 'master-btn active' : 'master-btn';
-  }
-
-  static applyButtonState(el, deep) {
-    if (!el) return;
-    el.className = this.buttonClasses(deep);
   }
 
   /**
@@ -175,14 +168,5 @@ export class UIManager {
       });
     }
     return rows;
-  }
-
-  /**
-   * 点击棋子的着法指示器数据 —— V2.0 全部托管给 MoveIndicatorRenderer.buildAndRate：
-   * 废除以"吃子/非吃子"分类的旧渲染，改按行棋方视角得分的相对强度分级
-   * （优等实心发光圆点/中等薄环/平庸隐藏）+ Top1 脉动（在绘制层兑现）。
-   */
-  static buildPieceSelection(data, board, selected) {
-    return buildAndRate(data, board, selected);
   }
 }
