@@ -8,5 +8,65 @@
     "losses": 0,
     "draws": 0,
     "updatedAt": 1792508388933
+  },
+  {
+    "playerId": "54019d1b-3cec-4048-939e-285ade65d30f",
+    "name": "无名棋手",
+    "rating": 1200,
+    "games": 0,
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "updatedAt": 1792830557087
+  },
+  {
+    "playerId": "0d355aa0-4a67-4081-86d3-443ff5069876",
+    "name": "111",
+    "rating": 1200,
+    "games": 0,
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "updatedAt": 1792830582025
+  },
+  {
+    "playerId": "d740d552-208f-4b69-8141-b460beb07bb1",
+    "name": "222",
+    "rating": 1200,
+    "games": 0,
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "updatedAt": 1792830598066
+  },
+  {
+    "playerId": "p_1792830719344_qgqhpb",
+    "name": "无名棋手",
+    "rating": 1216,
+    "games": 1,
+    "wins": 1,
+    "losses": 0,
+    "draws": 0,
+    "updatedAt": 1792831021945
+  },
+  {
+    "playerId": "p_1792830814636_ts9dw7",
+    "name": "无名棋手",
+    "rating": 1200,
+    "games": 0,
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "updatedAt": 1792830820004
+  },
+  {
+    "playerId": "a1a3a551-3680-4171-95bb-0c574639facc",
+    "name": "22",
+    "rating": 1184,
+    "games": 1,
+    "wins": 0,
+    "losses": 1,
+    "draws": 0,
+    "updatedAt": 1792831021945
   }
 ]

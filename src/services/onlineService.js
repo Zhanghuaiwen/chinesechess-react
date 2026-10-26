@@ -5,7 +5,17 @@
  *   心跳探测、断线检测、重连策略都由我方掌控，能体现工程细节。
  * 本层只负责「连接 / 收发 / 心跳」，不含任何游戏语义 —— 游戏状态由 useOnlineGame 承载。
  */
-const DEFAULT_URL = import.meta.env?.VITE_WS_URL || 'ws://localhost:8787';
+/**
+ * 默认联机地址：跟随页面所在主机名。
+ * - localhost 访问 -> ws://localhost:8787
+ * - 局域网 IP 访问（如 http://192.168.1.5:5174）-> ws://192.168.1.5:8787
+ * 可用 VITE_WS_URL 显式覆盖（例如服务端部署在另一台机器）。
+ */
+const DEFAULT_URL =
+  import.meta.env?.VITE_WS_URL ||
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8787`
+    : 'ws://localhost:8787');
 
 /** 应用层心跳间隔（毫秒） */
 const HEARTBEAT_MS = 15000;

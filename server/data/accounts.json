@@ -1,4 +1,40 @@
 {
-  "accounts": [],
-  "sessions": []
+  "accounts": [
+    {
+      "playerId": "0d355aa0-4a67-4081-86d3-443ff5069876",
+      "username": "111",
+      "displayName": "111",
+      "salt": "2843ba5b08cf232d5ec0574e436618de",
+      "hash": "497528a2f915e9f69bba80d296a167db37b7cb06c1f24eb052c7b49f6095e2eb6b534e492d7bc19f44c9f24dc2c6e9bba2c49a4597b86fa9dccca0b79807d929",
+      "createdAt": 1792830582022
+    },
+    {
+      "playerId": "d740d552-208f-4b69-8141-b460beb07bb1",
+      "username": "222",
+      "displayName": "222",
+      "salt": "55ca49e3fda5c69d68cc2a0489375d98",
+      "hash": "2bf32dd77fe043df2d78077557b9bffae2b8a1a4707536b818d3f31f07620cf52a0bdda66ba284e27649d867951c4bffaacb80ef9ee5457d2e39cca1c0645f72",
+      "createdAt": 1792830598064
+    },
+    {
+      "playerId": "a1a3a551-3680-4171-95bb-0c574639facc",
+      "username": "22",
+      "displayName": "22",
+      "salt": "941de17c8251e6f33629445e3f91612b",
+      "hash": "b5cd5d1a099aeefe8e1433f16a9015646184b06348e3aaf0ca2f5bae47397e7ed4d1b203191722d63c5d2b02f7faf9d4947d1a3c61deea519f465994bf9d339f",
+      "createdAt": 1792830836587
+    }
+  ],
+  "sessions": [
+    {
+      "tokenHash": "125702ca2a5597bcb679492ab7a4cb3b54ed47a27f8583db187eed9604a741be",
+      "playerId": "d740d552-208f-4b69-8141-b460beb07bb1",
+      "expiresAt": 1795422598064
+    },
+    {
+      "tokenHash": "0ff3a111d6ccd8b65fea01765f6cb213b0b200ba514e1604fd6f224a8ed3ca3f",
+      "playerId": "a1a3a551-3680-4171-95bb-0c574639facc",
+      "expiresAt": 1795424041320
+    }
+  ]
 }

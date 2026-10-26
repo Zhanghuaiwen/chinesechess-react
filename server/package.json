@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "smoke": "node scripts/smoke.mjs",
     "smoke:p2": "node scripts/smoke-p2.mjs",
-    "smoke:p1": "node scripts/smoke-p1.mjs"
+    "smoke:p1": "node scripts/smoke-p1.mjs",
+    "smoke:auth": "node scripts/smoke-auth.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
